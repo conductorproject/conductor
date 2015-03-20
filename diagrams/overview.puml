@@ -1,0 +1,81 @@
+@startuml
+
+FileResource o-up- Host :+predefined_hosts [1..*]
+FileResource "*" - "*" Package
+(FileResource, Package) .. PackageResource
+
+class Host {
+    +name: str
+    +remote_protocol: SFTP || SSH
+    +find_files(file_pattern, where=None)
+    +fetch_files(paths, where=None)
+    +send_local_files(local_paths, destination_dir, where=None)
+    +delete_files(paths, where=None)
+    +create_directory(path, where=None)
+    -find_local_files(file_pattern)
+    -find_remote_files(file_pattern, where, protocol=None)
+    -find_remote_files_sftp(file_pattern, where)
+    -fetch_local_files(paths)
+    -fetch_remote_files(paths, where, protocol=None)
+    -fetch_remote_files_sftp(paths, where)
+    -local_send_files(origin_paths, destination_dir)
+    -remote_send_files(origin_paths, destination_dir, where, protocol=None)
+    -sftp_send_files(origin_paths, destination_dir, where)
+    -delete_local_files(paths)
+    -delete_remote_files(paths, where, protocol=None)
+    -delete_remote_files_sftp(paths, where)
+}
+
+class Package {
+    +name: str
+    +timeslot: datetime.Datetime
+    +run()
+    +find_inputs()
+    +find_outputs()
+    +fetch_inputs()
+    +fetch_outputs()
+    +clean_outputs()
+    +archive_outputs()
+    -able_to_execute()
+    -execute()
+    -run_pre_execution()
+    -run_post_execution()
+    -clean_temporary_files()
+}
+
+class PackageResource {
+    +role: INPUT || OUTPUT
+}
+
+class FileResource {
+    +name: str
+    +search_pattern: str
+    +search_path: str
+    +use_predefined_hosts: bool
+    +product: Product
+    +find()
+    +fetch()
+    +send_to_host(host)
+}
+
+class Product {
+    +name:str
+    +long_name:str
+}
+
+class ProcessingLine {
+}
+
+class Settings {
+}
+
+note top of Host
+* the file_pattern argument to the find() methods is
+a string that is first formatted using the format()
+function and after that it is treated as a regular
+expression pattern
+* the paths argument to the fetch() and delete() methods is a full
+path to the path that is to be fetched
+end note
+
+@enduml
