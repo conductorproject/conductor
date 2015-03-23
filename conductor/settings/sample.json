@@ -14,6 +14,12 @@
   "movers": {
     "geo2": {
       "data_dir": "/home/geo2/test_data/giosystem/data"
+    },
+    "gridpt25": {
+      "data_dir": "/data1/geoland/OPERATIONAL/DATA",
+      "server": "gridpt25.meteo.pt",
+      "username": "geoland",
+      "password": "1234321"
     }
   }
 }

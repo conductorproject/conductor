@@ -3,13 +3,11 @@
 hide empty attributes
 hide empty methods
 
-RemoteMoverProtocol <|-- SftpProtocol
-RemoteMoverProtocol <|-- SshProtocol
-RemoteMoverProtocol <|-- FtpProtocol
-RemoteMoverProtocol <|-- OgcProtocol
-
 ResourceMover <|-- LocalMover
 ResourceMover <|-- RemoteMover
+RemoteMover <|-- SftpMover
+RemoteMover <|-- FtpMover
+RemoteMover <|-- CswMover
 FileResource "*" -up- "*" RemoteMover : +predefined_remote_movers
 FileResource "*" -- "*" Package
 (FileResource, Package) .. PackageResource
@@ -34,8 +32,26 @@ class LocalMover {
     +delete(paths)
 }
 
-class RemoteMover {
-    +protocol: RemoteMoverProtocol
+class RemoteMoverFactory {
+    -cache: dict
+    get_mover(name, protocol, **protocol_parameters)
+}
+
+class SftpMover {
+    +find(file_pattern)
+    +fetch(paths)
+    +copy(origin_paths, destination_dir)
+    +delete(paths)
+}
+
+class FtpMover {
+    +find(file_pattern)
+    +fetch(paths)
+    +copy(origin_paths, destination_dir)
+    +delete(paths)
+}
+
+class CswMover {
     +find(file_pattern)
     +fetch(paths)
     +copy(origin_paths, destination_dir)
@@ -102,9 +118,10 @@ class ProcessingLinePackage {
 }
 
 class Settings {
-    -package_settings: dict()
-    -file_resource_settings: dict()
-    -mover_settings: dict()
+    -package_settings: dict
+    -file_resource_settings: dict
+    -mover_settings: dict
+    -remote_mover_factory: RemoteMoverFactory
     {static} get_settings(uri)
     {static} get_package(name, timeslot)
     {static} get_file_resource(name, timeslot)

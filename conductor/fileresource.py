@@ -24,7 +24,7 @@ class FileResource(object):
     def timeslot(self, timeslot):
         if not isinstance(timeslot, datetime):
             timeslot = datetime.strptime(timeslot, "%Y%m%d%H%M")
-            self._timeslot = timeslot
+        self._timeslot = timeslot
 
     @property
     def year(self):
