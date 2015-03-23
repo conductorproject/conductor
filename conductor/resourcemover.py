@@ -4,6 +4,7 @@ Mover classes for conductor
 
 import os
 import re
+import shutil
 import logging
 from socket import gethostname
 
@@ -31,10 +32,13 @@ class ResourceMover(object):
         self.name = name
         self.data_dir = data_dir
 
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__, self.name)
+
     def find(self, file_pattern):
         raise NotImplementedError
 
-    def fetch(self, *paths):
+    def fetch(self, destination_dir, *paths):
         raise NotImplementedError
 
     def copy(self, origin_paths, destination_dir):
@@ -76,14 +80,23 @@ class LocalMover(ResourceMover):
             logger.warning(e)
         return found
 
-    def fetch(self, *paths):
-        raise NotImplementedError
+    def fetch(self, destination_dir, *paths):
+        self._create_directory(destination_dir)
+        copied = []
+        for p in paths:
+            shutil.copy(p, destination_dir)
+            copied.append(os.path.join(destination_dir, os.path.basename(p)))
+        return copied
 
     def copy(self, origin_paths, destination_dir):
         raise NotImplementedError
 
     def delete(self, paths):
         raise NotImplementedError
+
+    def _create_directory(self, path):
+        if not os.path.isdir(path):
+            os.makedirs(path)
 
 
 class RemoteMover(ResourceMover):
@@ -97,7 +110,7 @@ class FtpMover(RemoteMover):
         self.server = server
         self.username = username
         self.password = password
-        self._connect()
+        self.ftp_host = None
 
     def find(self, file_pattern):
         found = []
@@ -107,12 +120,17 @@ class FtpMover(RemoteMover):
                 re_obj = re.search(name_pattern, item)
                 if re_obj is not None:
                     found.append(os.path.join(dirname, item))
+        except AttributeError:
+            logger.info("establishing the first FTP connection with "
+                        "{}...".format(self.server))
+            self._connect()
+            found = self.find(file_pattern)
         except ftputil.error.TemporaryError as e:
             logger.warning("the previous connection timed out, "
                            "reconnecting...")
             self.ftp_host.close()
             self._connect()
-            self.find(file_pattern)
+            found = self.find(file_pattern)
         except ftputil.error.PermanentError as e:
             if e.errno == 550:
                 logger.warning(e)
@@ -120,7 +138,7 @@ class FtpMover(RemoteMover):
                 raise
         return found
 
-    def fetch(self, *paths):
+    def fetch(self, destination_dir, *paths):
         raise NotImplementedError
 
     def copy(self, origin_paths, destination_dir):
@@ -132,8 +150,8 @@ class FtpMover(RemoteMover):
     def ensure_connected(self):
         raise NotImplementedError
 
-    def __repr__(self):
-        return "{}({})".format(self.__class__.__name__, self.name)
+    #def __repr__(self):
+    #    return "{}({})".format(self.__class__.__name__, self.name)
 
     def _connect(self):
         self.ftp_host = ftputil.FTPHost(self.server, self.username,
@@ -159,7 +177,7 @@ class RemoteMoverFactory(object):
 
     _cache = dict()
 
-    def get_mover(self, name, protocol, **protocol_parameters):
+    def get_mover(self, name, protocol, **mover_parameters):
         protocol_class = self._protocol_map.get(protocol)
         if protocol_class is not None:
             cached_protocol_instances = self._cache.get(protocol)
@@ -167,13 +185,11 @@ class RemoteMoverFactory(object):
                 cached_instance = cached_protocol_instances.get(name)
                 if cached_instance is None:
                     self._cache[protocol][name] = protocol_class(
-                        name, **protocol_parameters)
+                        name, **mover_parameters)
             else:
                 self._cache[protocol] = dict()
                 self._cache[protocol][name] = protocol_class(
-                    name, **protocol_parameters)
+                    name, **mover_parameters)
         else:
             raise ValueError("Invalid protocol")
         return self._cache[protocol][name]
-
-

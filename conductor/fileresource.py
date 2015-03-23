@@ -3,6 +3,9 @@ File resource classes for conductor
 """
 
 from datetime import datetime
+import logging
+
+logger = logging.getLogger("conductor.{}".format(__name__))
 
 
 class FileResource(object):
@@ -14,7 +17,7 @@ class FileResource(object):
     selection_rule = None
     use_predefined_movers = True
     local_mover = None
-    predefined_remote_movers = []
+    remote_movers = []
 
     @property
     def timeslot(self):
@@ -71,12 +74,13 @@ class FileResource(object):
         self._search_path = path_pattern
 
     def __init__(self, name, timeslot, local_mover, search_pattern=None,
-                 search_path=None, **kwargs):
+                 search_path=None, remote_movers=None):
         self.name = name
         self.timeslot = timeslot
         self.local_mover = local_mover
         self.search_pattern = search_pattern
         self.search_path = search_path
+        self.remote_movers = remote_movers if remote_movers is not None else []
 
     def __repr__(self):
         return "{0.__class__.__name__}({0.name}, {0.timeslot})".format(self)
@@ -89,7 +93,7 @@ class FileResource(object):
         first match:
 
         * if there is a local_mover, it is searched;
-        * if there are predefined_remote_movers and the use_predefined_movers
+        * if there are predefined remote_movers and the use_predefined_movers
           flag is True, each of the predefined movers is searched;
         * if there are additional movers given as input to this method, they
           are searched.
@@ -116,21 +120,34 @@ class FileResource(object):
         if self.local_mover is not None:
             found_paths = self.local_mover.find(path_pattern)
             found_mover = self.local_mover if len(found_paths) > 0 else None
-        movers = self.predefined_remote_movers + additional_movers if \
+        movers = (self.remote_movers + additional_movers) if \
             self.use_predefined_movers else additional_movers
         current_index = 0
+        logger.debug("About to start searching remote movers...")
         while len(found_paths) == 0 and current_index < len(movers):
             m = movers[current_index]
+            logger.debug("About to search in mover {}...".format(m))
             found_paths = m.find(path_pattern)
             found_mover = m if len(found_paths) > 0 else None
             current_index += 1
         return found_mover, found_paths
 
-    def fetch(self):
+    def fetch(self, destination_dir):
         raise NotImplementedError
 
     def delete(self, path, remote_mover=None):
         raise NotImplementedError
 
     def copy_to(self, path, destination, remote_mover=None):
+        raise NotImplementedError
+
+    def choose(self, *resources):
+        """
+        Returns a single item which is deemed to be the one this object
+        represents
+
+        :param resources:
+        :return:
+        """
+
         raise NotImplementedError
