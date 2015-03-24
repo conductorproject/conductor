@@ -8,6 +8,10 @@ import logging
 logger = logging.getLogger("conductor.{}".format(__name__))
 
 
+# TODO - Use multiple file_paths instead of only one
+# TODO - Use multiple data_dirs on the ResourceMover class instead of only one
+# TODO - Add a filtering choice on the FileResource, unrelated to the SelectionRule
+# TODO - Merge the SelectionRules into the FileResource class
 class FileResource(object):
     _timeslot = None
     _search_path = ""
