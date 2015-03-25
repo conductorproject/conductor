@@ -189,6 +189,9 @@ class FileResource(object):
         for rule in self.filtering_rules:
             if rule == self.ALPHABETICAL:
                 result.sort()
-            else:
+            elif rule == self.MOST_RECENT:
                 pass
+            else:
+                logger.warning("Filtering rule {} is not "
+                               "recognized".format(rule))
         return resources[0]

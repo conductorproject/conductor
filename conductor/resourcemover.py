@@ -134,7 +134,7 @@ class FtpMover(RemoteMover):
                         "{}...".format(self.server))
             self._connect()
             found = self.find(*file_patterns)
-        except ftputil.error.TemporaryError as e:
+        except ftputil.error.TemporaryError:
             logger.info("Previous connection timed out, "
                            "Reconnecting...")
             self.ftp_host.close()
@@ -142,34 +142,68 @@ class FtpMover(RemoteMover):
             found = self.find(*file_patterns)
         except ftputil.error.PermanentError as e:
             if e.errno == 550:
-                logger.warning(e)
+                logger.error(e)
             else:
                 raise
         return found
 
-    # TODO - Check for connection errors in a similar fashion to the find() method
     def fetch(self, destination_dir, *paths):
         self._create_local_directory(destination_dir)
         copied = []
-        for p in paths:
-            file_name = os.path.basename(p)
-            target_path = os.path.join(destination_dir, file_name)
-            self.ftp_host.download(p, target_path)
-            copied.append(target_path)
+        try:
+            for p in paths:
+                file_name = os.path.basename(p)
+                target_path = os.path.join(destination_dir, file_name)
+                self.ftp_host.download(p, target_path)
+                copied.append(target_path)
+        except AttributeError:
+            logger.info("Not connected to FTP server yet. Establishing "
+                        "the first FTP connection with "
+                        "{}...".format(self.server))
+            self._connect()
+            copied = self.fetch(destination_dir, *paths)
+        except ftputil.error.TemporaryError:
+            logger.info("Previous connection timed out, "
+                        "Reconnecting...")
+            self.ftp_host.close()
+            self._connect()
+            copied = self.fetch(destination_dir, *paths)
+        except ftputil.error.PermanentError as e:
+            if e.errno == 550:
+                logger.error(e)
+            else:
+                raise
         return copied
 
     def copy(self, origin_paths, destination_dir):
         raise NotImplementedError
 
-    # TODO - Check for connection errors in a similar fashion to the find() method
     # TODO - Remove empty directories recursively, similarly to the LocalMover's delete() method
     # TODO - Improve error handling
     def delete(self, *paths):
-        for p in paths:
-            try:
-                self.ftp_host.remove(p)
-            except Exception as e:
+        try:
+            for p in paths:
+                try:
+                    self.ftp_host.remove(p)
+                except Exception as e:
+                    logger.error(e)
+        except AttributeError:
+            logger.info("Not connected to FTP server yet. Establishing "
+                        "the first FTP connection with "
+                        "{}...".format(self.server))
+            self._connect()
+            self.delete(*paths)
+        except ftputil.error.TemporaryError:
+            logger.info("Previous connection timed out, "
+                        "Reconnecting...")
+            self.ftp_host.close()
+            self._connect()
+            self.delete(*paths)
+        except ftputil.error.PermanentError as e:
+            if e.errno == 550:
                 logger.error(e)
+            else:
+                raise
 
     def _connect(self):
         self.ftp_host = ftputil.FTPHost(self.server, self.username,

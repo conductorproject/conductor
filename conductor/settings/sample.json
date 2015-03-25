@@ -1,4 +1,9 @@
 {
+  "processing_tasks": {
+    "pre process MODIS": {
+      "description": ""
+    }
+  },
   "file_resources": {
     "Copernicus LST AFRI tile": {
       "search_pattern": "g2_BIOPAR_LST_{0.year}{0.month:02d}{0.day:02d}{0.hour:02d}{0.minute:02d}_AFRI_GEO_v1",
