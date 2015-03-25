@@ -8,20 +8,19 @@ import logging
 logger = logging.getLogger("conductor.{}".format(__name__))
 
 
-# TODO - Use multiple file_paths instead of only one
-# TODO - Use multiple data_dirs on the ResourceMover class instead of only one
-# TODO - Add a filtering choice on the FileResource, unrelated to the SelectionRule
 # TODO - Merge the SelectionRules into the FileResource class
 class FileResource(object):
+    MOST_RECENT = "most_recent"
+    ALPHABETICAL = "alphabetical"
     _timeslot = None
-    _search_path = ""
+    _search_paths = []
     _search_pattern = ""
     source = None
     product = None
-    selection_rule = None
     use_predefined_movers = True
     local_mover = None
     remote_movers = []
+    filtering_rules = []
 
     @property
     def timeslot(self):
@@ -29,7 +28,7 @@ class FileResource(object):
 
     @timeslot.setter
     def timeslot(self, timeslot):
-        if not isinstance(timeslot, datetime):
+        if isinstance(timeslot, basestring):
             timeslot = datetime.strptime(timeslot, "%Y%m%d%H%M")
         self._timeslot = timeslot
 
@@ -70,26 +69,29 @@ class FileResource(object):
         self._search_pattern = pattern
 
     @property
-    def search_path(self):
-        return self._search_path.format(self)
+    def search_paths(self):
+        return [p.format(self) for p in self._search_paths]
 
-    @search_path.setter
-    def search_path(self, path_pattern):
-        self._search_path = path_pattern
+    @search_paths.setter
+    def search_paths(self, path_patterns):
+        self._search_paths = path_patterns
 
-    def __init__(self, name, timeslot, local_mover, search_pattern=None,
-                 search_path=None, remote_movers=None):
+    def __init__(self, name, timeslot=None, local_mover=None,
+                 search_pattern="", search_paths=None, remote_movers=None,
+                 filtering_rules=None):
         self.name = name
         self.timeslot = timeslot
         self.local_mover = local_mover
         self.search_pattern = search_pattern
-        self.search_path = search_path
+        self.search_paths = search_paths if search_paths is not None else []
         self.remote_movers = remote_movers if remote_movers is not None else []
+        self.filtering_rules = filtering_rules if \
+            filtering_rules is not None else []
 
     def __repr__(self):
         return "{0.__class__.__name__}({0.name}, {0.timeslot})".format(self)
 
-    def find(self, additional_movers=[]):
+    def find(self, additional_movers=None):
         """
         Search for the file represented by this object.
 
@@ -118,40 +120,75 @@ class FileResource(object):
         :rtype: (ResourceMover, [str])
         """
 
+        additional = additional_movers if additional_movers is not None else []
         found_paths = []
         found_mover = None
-        path_pattern = "/".join((self.search_path, self.search_pattern))
+        path_patterns = ["/".join((p, self.search_pattern)) for p in
+                         self.search_paths]
         if self.local_mover is not None:
-            found_paths = self.local_mover.find(path_pattern)
+            found_paths = self.local_mover.find(*path_patterns)
             found_mover = self.local_mover if len(found_paths) > 0 else None
-        movers = (self.remote_movers + additional_movers) if \
-            self.use_predefined_movers else additional_movers
+        movers = (self.remote_movers + additional) if \
+            self.use_predefined_movers else additional
         current_index = 0
-        logger.debug("About to start searching remote movers...")
         while len(found_paths) == 0 and current_index < len(movers):
             m = movers[current_index]
             logger.debug("About to search in mover {}...".format(m))
-            found_paths = m.find(path_pattern)
+            found_paths = m.find(*path_patterns)
             found_mover = m if len(found_paths) > 0 else None
             current_index += 1
         return found_mover, found_paths
 
-    def fetch(self, destination_dir):
-        raise NotImplementedError
+    def fetch(self, destination_dir, additional_movers=None):
+        """
+        Fetch the resource represented by this object.
 
-    def delete(self, path, remote_mover=None):
-        raise NotImplementedError
+        :param destination_dir:
+        :param additional_movers:
+        :return:
+        """
+
+        found_mover, found_paths = self.find(
+            additional_movers=additional_movers)
+        fetched = None
+        if found_mover is not None:
+            chosen = self.choose(found_paths)
+            fetched = found_mover.fetch(destination_dir, chosen)
+        return fetched[0]
+
+    def delete(self, use_remote_mover=False, additional_movers=None):
+        found_mover, found_paths = self.find(
+            additional_movers=additional_movers)
+        if found_mover is not None:
+            # we have found some file paths
+            chosen = self.choose(found_paths)
+            if found_mover == self.local_mover:
+                found_mover.delete(chosen)  # delete from local directory
+            elif use_remote_mover:
+                found_mover.delete(chosen)  # delete from remote directory
+            else:
+                # the file was found on a remote mover and we do not want to
+                # delete it
+                pass
+        else:
+            logger.warning("Could not find the file to delete")
 
     def copy_to(self, path, destination, remote_mover=None):
         raise NotImplementedError
 
-    def choose(self, *resources):
+    def choose(self, resources):
         """
         Returns a single item which is deemed to be the one this object
         represents
 
-        :param resources:
+        :param resources: A list with the paths
         :return:
         """
 
-        raise NotImplementedError
+        result = resources[:]
+        for rule in self.filtering_rules:
+            if rule == self.ALPHABETICAL:
+                result.sort()
+            else:
+                pass
+        return resources[0]

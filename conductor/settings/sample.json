@@ -2,10 +2,10 @@
   "file_resources": {
     "Copernicus LST AFRI tile": {
       "search_pattern": "g2_BIOPAR_LST_{0.year}{0.month:02d}{0.day:02d}{0.hour:02d}{0.minute:02d}_AFRI_GEO_v1",
-      "search_path": "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/LST/{0.year}/{0.month:02d}/{0.day:02d}/{0.hour:02d}",
-      "selection_rule": {
-        "rule": "OFFSET",
-      },
+      "search_paths": [
+        "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/LST/{0.year}/{0.month:02d}/{0.day:02d}/{0.hour:02d}",
+        "OUTPUT_DATA/POST_PROCESS"
+      ],
       "remote_movers": [
         {
           "name": "gridpt25",
@@ -15,26 +15,38 @@
           "name": "arquivo_outputs",
           "protocol": "FTP"
         }
+      ],
+      "filtering_rules": [
+        "alphabetical"
       ]
     },
     "MOD40": {
       "search_pattern": "MOD40.A{0.year}.{0.year_day:03d}",
-      "search_path": "INCOMING_DATA/{0.year}/{0.month:02d}",
+      "search_paths": [
+        "INCOMING_DATA/{0.year}/{0.month:02d}"
+      ],
       "description": "Terra product"
     }
   },
   "movers": {
     "geo2": {
-      "data_dir": "/home/geo2/test_data/giosystem/data"
+      "data_dirs": [
+        "/home/geo2/test_data/giosystem/data"
+      ]
     },
     "gridpt25": {
-      "data_dir": "/data1/geoland/OPERATIONAL/DATA",
+      "data_dirs": [
+        "/data1/geoland/OPERATIONAL/DATA",
+        "/data1/geoland"
+      ],
       "server": "gridpt25.meteo.pt",
       "username": "geoland",
       "password": "1234321"
     },
     "arquivo_outputs": {
-      "data_dir": "/media/Data4/geoland2",
+      "data_dirs": [
+        "/media/Data4/geoland2"
+      ],
       "server": "192.168.151.29",
       "username": "g2user",
       "password": "g2user"
