@@ -5,13 +5,27 @@ File resource classes for conductor
 from datetime import datetime
 import logging
 
+from enum import Enum
+
 logger = logging.getLogger("conductor.{}".format(__name__))
 
 
+FILTER_RULES = Enum("FILTER_RULES",
+                    "MOST_RECENT "
+                    "LEAST_RECENT "
+                    "ALPHABETICAL "
+                    "FIX_YEAR "
+                    "FIX_MONTH "
+                    "FIX_DAY "
+                    "FIX_HOUR "
+                    "FIX_MINUTE "
+                    "FIX_DEKADE "
+                    "BEFORE_REFERENCE_TIMESLOT "
+                    "REGARDLESS_REFERENCE_TIMESLOT "
+                    "AFTER_REFERENCE_TIMESLOT")
+
 # TODO - Merge the SelectionRules into the FileResource class
 class FileResource(object):
-    MOST_RECENT = "most_recent"
-    ALPHABETICAL = "alphabetical"
     _timeslot = None
     _search_paths = []
     _search_pattern = ""
@@ -20,7 +34,6 @@ class FileResource(object):
     use_predefined_movers = True
     local_mover = None
     remote_movers = []
-    filtering_rules = []
 
     @property
     def timeslot(self):
@@ -61,6 +74,14 @@ class FileResource(object):
         return self.timeslot.minute if self.timeslot is not None else None
 
     @property
+    def dekade(self):
+        result = None
+        if self.timeslot is not None:
+            day = self.timeslot.day
+            result = 1 if day < 11 else (2 if day < 21 else 3)
+        return result
+
+    @property
     def search_pattern(self):
         return self._search_pattern.format(self)
 
@@ -77,16 +98,13 @@ class FileResource(object):
         self._search_paths = path_patterns
 
     def __init__(self, name, timeslot=None, local_mover=None,
-                 search_pattern="", search_paths=None, remote_movers=None,
-                 filtering_rules=None):
+                 search_pattern="", search_paths=None, remote_movers=None):
         self.name = name
         self.timeslot = timeslot
         self.local_mover = local_mover
         self.search_pattern = search_pattern
         self.search_paths = search_paths if search_paths is not None else []
         self.remote_movers = remote_movers if remote_movers is not None else []
-        self.filtering_rules = filtering_rules if \
-            filtering_rules is not None else []
 
     def __repr__(self):
         return "{0.__class__.__name__}({0.name}, {0.timeslot})".format(self)
@@ -176,7 +194,7 @@ class FileResource(object):
     def copy_to(self, path, destination, remote_mover=None):
         raise NotImplementedError
 
-    def choose(self, resources):
+    def choose(self, resources, filtering_rules=None):
         """
         Returns a single item which is deemed to be the one this object
         represents
@@ -185,13 +203,13 @@ class FileResource(object):
         :return:
         """
 
+        filters = filtering_rules if filtering_rules is not None else []
         result = resources[:]
-        for rule in self.filtering_rules:
-            if rule == self.ALPHABETICAL:
+        for rule in filters:
+            if rule == FILTER_RULES.ALPHABETICAL:
                 result.sort()
-            elif rule == self.MOST_RECENT:
-                pass
             else:
                 logger.warning("Filtering rule {} is not "
-                               "recognized".format(rule))
+                               "implemented".format(rule))
         return resources[0]
+

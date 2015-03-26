@@ -28,5 +28,6 @@ setup(
     include_package_data=True,
     install_requires=[
         'ftputil',
+        'enum34',  # python 3.4 enum class backported to earlier versions
     ]
 )

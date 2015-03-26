@@ -1,7 +1,38 @@
 {
+  "processing_lines": {
+    "testing": {
+      "tasks": [
+        {
+          "name": "",
+          "fallback_to": ""
+        }
+      ]
+    }
+  },
   "processing_tasks": {
     "pre process MODIS": {
-      "description": ""
+      "description": "",
+      "inputs": [
+        {
+          "name": "Copernicus LST AFRI tile",
+          "strategy": {
+            "name": "multiple_ordered",
+            "start_days": -1,
+            "frequency_hours": -1,
+            "number_of_timeslots": 10
+          },
+          "except_when": {
+            "hours": [1, 2, 3, 4]
+          },
+          "optional_when": {
+            "days": [1]
+          }
+        },
+        {
+          "name": "MOD40"
+        }
+      ],
+      "outputs": []
     }
   },
   "file_resources": {
@@ -20,9 +51,6 @@
           "name": "arquivo_outputs",
           "protocol": "FTP"
         }
-      ],
-      "filtering_rules": [
-        "alphabetical"
       ]
     },
     "MOD40": {

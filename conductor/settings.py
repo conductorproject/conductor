@@ -16,6 +16,7 @@ class Settings(object):
 
     _package_settings = dict()
     _file_resource_settings = dict()
+    _processing_task_settings = dict()
     _mover_settings = dict()
     _cached_local_mover = None
     _remote_mover_factory = resourcemover.RemoteMoverFactory()
@@ -74,3 +75,8 @@ class Settings(object):
             mover = cls._remote_mover_factory.get_mover(name, protocol,
                                                         **mover_settings)
         return mover
+
+    @classmethod
+    def get_processing_task(cls, name, timeslot):
+        processing_task_settings = cls._processing_task_settings.get(name,
+                                                                     dict())
