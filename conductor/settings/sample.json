@@ -3,15 +3,17 @@
     "testing": {
       "tasks": [
         {
-          "name": "",
-          "fallback_to": ""
+          "name": "pre process MODIS",
+          "fallback_to": "",
+          "depends": [],
+          "starts_at": null
         }
       ]
     }
   },
   "processing_tasks": {
     "pre process MODIS": {
-      "description": "",
+      "description": "This task does some pre-processing to the MODIS data",
       "inputs": [
         {
           "name": "Copernicus LST NOAM tile",
