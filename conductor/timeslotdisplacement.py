@@ -10,6 +10,10 @@ from enum import Enum
 
 logger = logging.getLogger("conductor.{}".format(__name__))
 
+STRATEGY = Enum("STRATEGY",
+                "SINGLE_ABSOLUTE "
+                "SINGLE_RELATIVE "
+                "MULTIPLE_ORDERED")
 
 class TimeslotDisplacementStrategy(object):
 

@@ -14,9 +14,9 @@
       "description": "",
       "inputs": [
         {
-          "name": "Copernicus LST AFRI tile",
+          "name": "Copernicus LST NOAM tile",
           "strategy": {
-            "name": "multiple_ordered",
+            "name": "MULTIPLE_ORDERED",
             "start_days": -1,
             "frequency_hours": -1,
             "number_of_timeslots": 10
@@ -26,7 +26,8 @@
           },
           "optional_when": {
             "days": [1]
-          }
+          },
+          "filtering_rules": ["ALPHABETICAL"]
         },
         {
           "name": "MOD40"
@@ -36,27 +37,33 @@
     }
   },
   "file_resources": {
-    "Copernicus LST AFRI tile": {
-      "search_pattern": "g2_BIOPAR_LST_{0.year}{0.month:02d}{0.day:02d}{0.hour:02d}{0.minute:02d}_AFRI_GEO_v1",
+    "Copernicus LST NOAM tile": {
+      "search_pattern": "g2_BIOPAR_LST_{0.year}{0.month:02d}{0.day:02d}{0.hour:02d}{0.minute:02d}_NOAM_GEO_v1",
       "search_paths": [
-        "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/LST/{0.year}/{0.month:02d}/{0.day:02d}/{0.hour:02d}",
-        "OUTPUT_DATA/POST_PROCESS"
-      ],
-      "remote_movers": [
         {
-          "name": "gridpt25",
-          "protocol": "FTP"
+          "path": "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/LST/{0.year}/{0.month:02d}/{0.day:02d}/{0.hour:02d}",
+          "remote_movers": [
+            {
+              "name": "gridpt25",
+              "protocol": "FTP"
+            },
+            {
+              "name": "arquivo_outputs",
+              "protocol": "FTP"
+            }
+          ]
         },
         {
-          "name": "arquivo_outputs",
-          "protocol": "FTP"
-        }
+          "path": "OUTPUT_DATA/POST_PROCESS",
+          "remote_movers": [{"name": "gridpt25"}, {"name": "arquivo_outputs"}]
+        },
+        {"path": "fake/path"}
       ]
     },
     "MOD40": {
       "search_pattern": "MOD40.A{0.year}.{0.year_day:03d}",
       "search_paths": [
-        "INCOMING_DATA/{0.year}/{0.month:02d}"
+          {"path": "INCOMING_DATA/{0.year}/{0.month:02d}"}
       ],
       "description": "Terra product"
     }
@@ -65,6 +72,11 @@
     "geo2": {
       "data_dirs": [
         "/home/geo2/test_data/giosystem/data"
+      ]
+    },
+    "ric-portatil": {
+      "data_dirs": [
+        "/home/ricardo/test_data/giosystem/data"
       ]
     },
     "gridpt25": {

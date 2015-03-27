@@ -1,18 +1,16 @@
 """
-Classes for managing processing step resources
+Classes for managing conductor.ProcessingTask resources
 """
 
 import copy
 import logging
-
-from enum import Enum
 
 import timeslotdisplacement as tsd
 
 logger = logging.getLogger("conductor.{}".format(__name__))
 
 
-class ProcessingStepResource(object):
+class TaskResource(object):
 
     @property
     def active(self):
@@ -73,19 +71,24 @@ class ProcessingStepResource(object):
     def __repr__(self):
         return "{}({})".format(self.__class__.__name__, self.file_resource)
 
+    def find(self):
+        found_mover, found_paths = self.file_resource.find()
+        chosen_path = None
+        if any(found_paths):
+            chosen_path = self.file_resource.choose(
+                found_paths,
+                filtering_rules=self.timeslot_choosing_rules
+            )
+        return found_mover, chosen_path
 
-class ProcessingStepResourceFactory(object):
-    STRATEGY = Enum("STRATEGY",
-                    "SINGLE_ABSOLUTE "
-                    "SINGLE_RELATIVE "
-                    "MULTIPLE_ORDERED")
 
-    def get_resources(self, resource, base_timeslot=None,
-                      strategy=STRATEGY.SINGLE_ABSOLUTE,
+class TaskResourceFactory(object):
+
+    def get_resources(self, resource, base_timeslot=None, strategy=None,
                       strategy_params=None, except_when=None,
-                      optional_when=None, choosing_rules=None):
+                      optional_when=None, filtering_rules=None):
         """
-        Create new ProcessingStepResources
+        Create new TaskResources
 
         This is a factory for abstracting away the complexities of creating
         file resources
@@ -93,6 +96,7 @@ class ProcessingStepResourceFactory(object):
         :return:
         """
 
+        strategy = strategy or tsd.STRATEGY.SINGLE_ABSOLUTE
         except_when = except_when or dict()
         optional_when = optional_when or dict()
         params = strategy_params if strategy_params is not None else dict()
@@ -106,8 +110,8 @@ class ProcessingStepResourceFactory(object):
             "offset_dekades": params.get("dekades", 0),
             }
         timeslots = []
-        filtering_rules = choosing_rules or []
-        if strategy == self.STRATEGY.SINGLE_ABSOLUTE:
+        filtering_rules = filtering_rules or []
+        if strategy == tsd.STRATEGY.SINGLE_ABSOLUTE:
             offsets = {
                 "offset_years": params.get("relative_years", 0),
                 "offset_months": params.get("relative_months", 0),
@@ -118,10 +122,10 @@ class ProcessingStepResourceFactory(object):
             }
             s = tsd.SingleAbsoluteStrategy(ts, **offset_creation_params)
             timeslots = [s.get_timeslot(**offsets)]
-        elif strategy == self.STRATEGY.SINGLE_RELATIVE:
+        elif strategy == tsd.STRATEGY.SINGLE_RELATIVE:
             filtering_rules = strategy_params
             timeslots = [ts]
-        elif strategy == self.STRATEGY.MULTIPLE_ORDERED:
+        elif strategy == tsd.STRATEGY.MULTIPLE_ORDERED:
             s = tsd.MultipleOrderedStategy(ts, **offset_creation_params)
             multi_params = {
                 "start_years": params.get("start_years", 0),
@@ -143,7 +147,7 @@ class ProcessingStepResourceFactory(object):
         for slot in timeslots:
             new_resource = copy.copy(resource)
             new_resource.timeslot = slot
-            result.append(ProcessingStepResource(
+            result.append(TaskResource(
                 new_resource, optional_when_years=optional_when.get("years"),
                 optional_when_months=optional_when.get("months"),
                 optional_when_days=optional_when.get("days"),
@@ -160,4 +164,4 @@ class ProcessingStepResourceFactory(object):
             ))
         return result
 
-factory = ProcessingStepResourceFactory()
+factory = TaskResourceFactory()

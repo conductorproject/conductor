@@ -9,6 +9,9 @@ from socket import gethostname
 
 import fileresource
 import resourcemover
+import processingtask
+import errors
+from timeslotdisplacement import STRATEGY
 
 logger = logging.getLogger(__name__)
 
@@ -38,29 +41,34 @@ class Settings(object):
                 cls._file_resource_settings = all_settings.get(
                     "file_resources", {})
                 cls._mover_settings = all_settings.get("movers", {})
+                cls._processing_task_settings = all_settings.get(
+                    "processing_tasks", {})
         except IOError as e:
             logger.error(e)
 
     @classmethod
     def get_file_resource(cls, name, timeslot):
-        file_resource_settings = cls._file_resource_settings.get(name, dict())
-        the_settings = file_resource_settings.copy()
-        local_mover = cls.get_mover()
-        remote_movers_settings = the_settings.get("remote_movers",
-                                                            [])
         try:
-            del the_settings["remote_movers"]
+            file_resource_settings = cls._file_resource_settings[name]
         except KeyError:
-            pass
-        remote_movers = []
-        for mover_settings in remote_movers_settings:
-            mover = cls.get_mover(name=mover_settings["name"],
-                                  protocol=mover_settings["protocol"])
-            remote_movers.append(mover)
+            raise errors.InvalidSettingsError("file_resource '{}' is "
+                                              "not defined in the "
+                                              "settings".format(name))
+        local_mover = cls.get_mover()
+        the_settings = file_resource_settings.copy()
+        del the_settings["search_paths"]
         file_resource = fileresource.FileResource(name=name, timeslot=timeslot,
                                                   local_mover=local_mover,
-                                                  remote_movers=remote_movers,
                                                   **the_settings)
+        for sps in file_resource_settings["search_paths"]:
+            path_pattern = sps["path"]
+            remote_movers_settings = sps.get("remote_movers", [])
+            remote_movers = []
+            for remote_mover_settings in sps.get("remote_movers", []):
+                mover_name = remote_mover_settings["name"]
+                protocol = remote_mover_settings.get("protocol", "FTP")
+                remote_movers.append(cls.get_mover(mover_name, protocol))
+            file_resource.add_search_path(path_pattern, remote_movers)
         return file_resource
 
     @classmethod
@@ -78,5 +86,44 @@ class Settings(object):
 
     @classmethod
     def get_processing_task(cls, name, timeslot):
-        processing_task_settings = cls._processing_task_settings.get(name,
-                                                                     dict())
+        try:
+            processing_task_settings = cls._processing_task_settings[name]
+        except KeyError:
+            raise errors.InvalidSettingsError("processing_task '{}' is "
+                                              "not defined in the "
+                                              "settings".format(name))
+        the_settings = processing_task_settings.copy()
+        for k in ("inputs", "outputs"):
+            try:
+                del the_settings[k]
+            except KeyError:
+                pass
+        task = processingtask.ProcessingTask(name, timeslot,
+                                             **the_settings)
+        inputs_settings = processing_task_settings.get("inputs", [])
+        outputs_settings = processing_task_settings.get("outputs", [])
+        cls._add_task_resources(timeslot, inputs_settings, task.add_inputs)
+        cls._add_task_resources(timeslot, outputs_settings, task.add_outputs)
+        return task
+
+    @classmethod
+    def _add_task_resources(cls, timeslot, resources_settings,
+                            task_method_callback):
+        for resource in resources_settings:
+            file_resource = cls.get_file_resource(resource["name"], timeslot)
+            strategy_settings = resource.get("strategy")
+            try:
+                strategy = strategy_settings.get("name",
+                                                 STRATEGY["SINGLE_ABSOLUTE"])
+                strategy_params = strategy_settings.copy()
+                del strategy_params["name"]
+            except AttributeError:
+                strategy = None
+                strategy_params = None
+            task_method_callback(
+                file_resource, strategy=strategy,
+                strategy_params=strategy_params,
+                except_when=resource.get("except_when"),
+                optional_when=resource.get("optional_when"),
+                filtering_rules=resource.get("filtering_rules")
+            )

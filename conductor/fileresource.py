@@ -24,16 +24,15 @@ FILTER_RULES = Enum("FILTER_RULES",
                     "REGARDLESS_REFERENCE_TIMESLOT "
                     "AFTER_REFERENCE_TIMESLOT")
 
-# TODO - Merge the SelectionRules into the FileResource class
 class FileResource(object):
     _timeslot = None
-    _search_paths = []
     _search_pattern = ""
+    _search_paths = []
+    description = ""
     source = None
     product = None
     use_predefined_movers = True
     local_mover = None
-    remote_movers = []
 
     @property
     def timeslot(self):
@@ -91,25 +90,25 @@ class FileResource(object):
 
     @property
     def search_paths(self):
-        return [p.format(self) for p in self._search_paths]
-
-    @search_paths.setter
-    def search_paths(self, path_patterns):
-        self._search_paths = path_patterns
+        return self._search_paths
 
     def __init__(self, name, timeslot=None, local_mover=None,
-                 search_pattern="", search_paths=None, remote_movers=None):
+                 search_pattern="", description=""):
         self.name = name
+        self.description = description
         self.timeslot = timeslot
         self.local_mover = local_mover
         self.search_pattern = search_pattern
-        self.search_paths = search_paths if search_paths is not None else []
-        self.remote_movers = remote_movers if remote_movers is not None else []
+        self._search_paths = []
 
     def __repr__(self):
         return "{0.__class__.__name__}({0.name}, {0.timeslot})".format(self)
 
-    def find(self, additional_movers=None):
+    def add_search_path(self, path_pattern, remote_movers=None):
+        sp = ResourceSearchPath(path_pattern, self, remote_movers)
+        self._search_paths.append(sp)
+
+    def find(self):
         """
         Search for the file represented by this object.
 
@@ -117,10 +116,8 @@ class FileResource(object):
         first match:
 
         * if there is a local_mover, it is searched;
-        * if there are predefined remote_movers and the use_predefined_movers
-          flag is True, each of the predefined movers is searched;
-        * if there are additional movers given as input to this method, they
-          are searched.
+        * if the use_predefined_movers flag is True, each of the remote movers
+          used by the search_paths is searched;
 
         Searching is done by concatenating each data_directory of each mover
         with the search_path and search_pattern of this object.
@@ -133,31 +130,28 @@ class FileResource(object):
         The result is a tuple with the mover where the match was made and a
         list of all the paths that matched.
 
-        :param additional_movers:
         :return: A tuple with the mover and a list of paths
         :rtype: (ResourceMover, [str])
         """
 
-        additional = additional_movers if additional_movers is not None else []
-        found_paths = []
         found_mover = None
-        path_patterns = ["/".join((p, self.search_pattern)) for p in
-                         self.search_paths]
+        found_paths = []
         if self.local_mover is not None:
+            logger.debug("Searching in the local mover...")
+            path_patterns = ["/".join((p.path_pattern, self.search_pattern))
+                             for p in self.search_paths]
             found_paths = self.local_mover.find(*path_patterns)
             found_mover = self.local_mover if len(found_paths) > 0 else None
-        movers = (self.remote_movers + additional) if \
-            self.use_predefined_movers else additional
-        current_index = 0
-        while len(found_paths) == 0 and current_index < len(movers):
-            m = movers[current_index]
-            logger.debug("About to search in mover {}...".format(m))
-            found_paths = m.find(*path_patterns)
-            found_mover = m if len(found_paths) > 0 else None
-            current_index += 1
+        if self.use_predefined_movers and len(found_paths) == 0:
+            logger.debug("Searching in remote movers...")
+            index = 0
+            while len(found_paths) == 0 and index < len(self.search_paths):
+                sp = self.search_paths[index]
+                found_mover, found_paths = sp.find_in_remotes()
+                index += 1
         return found_mover, found_paths
 
-    def fetch(self, destination_dir, additional_movers=None):
+    def fetch(self, destination_dir, filtering_rules=None):
         """
         Fetch the resource represented by this object.
 
@@ -166,20 +160,18 @@ class FileResource(object):
         :return:
         """
 
-        found_mover, found_paths = self.find(
-            additional_movers=additional_movers)
+        found_mover, found_paths = self.find()
         fetched = None
         if found_mover is not None:
-            chosen = self.choose(found_paths)
+            chosen = self.choose(found_paths, filtering_rules=filtering_rules)
             fetched = found_mover.fetch(destination_dir, chosen)
         return fetched[0]
 
-    def delete(self, use_remote_mover=False, additional_movers=None):
-        found_mover, found_paths = self.find(
-            additional_movers=additional_movers)
+    def delete(self, use_remote_mover=False, filtering_rules=None):
+        found_mover, found_paths = self.find()
         if found_mover is not None:
             # we have found some file paths
-            chosen = self.choose(found_paths)
+            chosen = self.choose(found_paths, filtering_rules=filtering_rules)
             if found_mover == self.local_mover:
                 found_mover.delete(chosen)  # delete from local directory
             elif use_remote_mover:
@@ -213,3 +205,47 @@ class FileResource(object):
                                "implemented".format(rule))
         return resources[0]
 
+
+class ResourceSearchPath(object):
+    _path_pattern = ""
+    file_resource = None
+    remote_movers = []
+
+    @property
+    def path_pattern(self):
+        try:
+            p = self._path_pattern.format(self.file_resource)
+        except AttributeError as e:  # self.file_resource is None
+            logger.debug("AQUI: {}".format(e))
+            logger.debug("self.file_resource: {}".format(self.file_resource))
+            p = self._path_pattern
+        return p
+
+    @path_pattern.setter
+    def path_pattern(self, path_pattern):
+        self._path_pattern = path_pattern
+
+    def __init__(self, path_pattern, file_resource, remote_movers=None):
+        self.path_pattern = path_pattern
+        self.file_resource = file_resource
+        self.remote_movers = remote_movers or []
+
+    def find_in_remotes(self):
+        found = []
+        in_mover = None
+        index = 0
+        while len(found) == 0 and index < len(self.remote_movers):
+            try:
+                mover, protocol = self.remote_movers[index]
+                logger.debug("About to search in mover {} using "
+                             "protocol {}...".format(mover, protocol))
+                found = mover.find(self.path_pattern)
+                in_mover = mover if len(found) > 0 else None
+            except (TypeError, ValueError):
+                raise ValueError("remote_movers must be a list of tuples "
+                                 "with (mover, protocol)")
+            index += 1
+        return in_mover, found
+
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__, self.path_pattern)
