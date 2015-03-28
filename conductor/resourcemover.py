@@ -11,6 +11,8 @@ from socket import gethostname
 import ftputil
 import ftputil.error
 
+import errors
+
 logger = logging.getLogger("conductor.{}".format(__name__))
 
 class ResourceMover(object):
@@ -116,6 +118,8 @@ class FtpMover(RemoteMover):
         self.username = username
         self.password = password
         self.ftp_host = None
+        self.timeout = 5  # seconds
+        self.host_available = True
 
     def find(self, *file_patterns):
         found = []
@@ -206,8 +210,31 @@ class FtpMover(RemoteMover):
                 raise
 
     def _connect(self):
-        self.ftp_host = ftputil.FTPHost(self.server, self.username,
-                                        self.password)
+        """
+        Establish a connection with the FTP server.
+
+        When this method fails, it will set the `host_available` attribute
+        to False. This will cause subsequent calls to this method to fail
+        immediately. This is an attempt to save some time when making
+        repeated calls to the same (unavailable) server. This way we only
+        wait for the connection timeout once.
+        """
+
+        if self.host_available:
+            try:
+                self.ftp_host = ftputil.FTPHost(self.server, self.username,
+                                                self.password,
+                                                timeout=self.timeout)
+            except ftputil.error.FTPOSError as e:
+                self.host_available = False
+                logger.error("Could not establish FTP connection: "
+                             "{}".format(e))
+                raise errors.InvalidFTPHostError(
+                    "FTP server '{}' not found".format(self.server))
+        else:
+            raise errors.InvalidFTPHostError(
+                "FTP server '{}' not found".format(self.server))
+
 
 
 class RemoteMoverFactory(object):

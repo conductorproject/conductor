@@ -7,7 +7,9 @@ import logging
 
 from enum import Enum
 
-logger = logging.getLogger("conductor.{}".format(__name__))
+import errors
+
+logger = logging.getLogger(__name__)
 
 
 FILTER_RULES = Enum("FILTER_RULES",
@@ -236,14 +238,15 @@ class ResourceSearchPath(object):
         index = 0
         while len(found) == 0 and index < len(self.remote_movers):
             try:
-                mover, protocol = self.remote_movers[index]
-                logger.debug("About to search in mover {} using "
-                             "protocol {}...".format(mover, protocol))
+                mover = self.remote_movers[index]
+                logger.debug("About to search in mover {}...".format(mover))
                 found = mover.find(self.path_pattern)
                 in_mover = mover if len(found) > 0 else None
-            except (TypeError, ValueError):
-                raise ValueError("remote_movers must be a list of tuples "
-                                 "with (mover, protocol)")
+            except AttributeError:
+                raise ValueError("remote_movers must be a list of RemoteMover "
+                                 "instances")
+            except errors.InvalidFTPHostError as e:
+                logger.error(e)
             index += 1
         return in_mover, found
 

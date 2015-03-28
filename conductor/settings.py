@@ -62,7 +62,6 @@ class Settings(object):
                                                   **the_settings)
         for sps in file_resource_settings["search_paths"]:
             path_pattern = sps["path"]
-            remote_movers_settings = sps.get("remote_movers", [])
             remote_movers = []
             for remote_mover_settings in sps.get("remote_movers", []):
                 mover_name = remote_mover_settings["name"]

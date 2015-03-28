@@ -6,8 +6,9 @@ import copy
 import logging
 
 import timeslotdisplacement as tsd
+import errors
 
-logger = logging.getLogger("conductor.{}".format(__name__))
+logger = logging.getLogger(__name__)
 
 
 class TaskResource(object):
@@ -96,7 +97,14 @@ class TaskResourceFactory(object):
         :return:
         """
 
-        strategy = strategy or tsd.STRATEGY.SINGLE_ABSOLUTE
+        if strategy is None:
+            strategy = tsd.STRATEGY.SINGLE_ABSOLUTE
+        else:
+            try:
+                strategy = tsd.STRATEGY[strategy]
+            except KeyError:
+                raise errors.InvalidSettingsError("Invalid Strategy "
+                                                  "'{}'".format(strategy))
         except_when = except_when or dict()
         optional_when = optional_when or dict()
         params = strategy_params if strategy_params is not None else dict()

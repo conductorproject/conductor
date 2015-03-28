@@ -8,7 +8,7 @@ import logging
 
 from enum import Enum
 
-logger = logging.getLogger("conductor.{}".format(__name__))
+logger = logging.getLogger(__name__)
 
 STRATEGY = Enum("STRATEGY",
                 "SINGLE_ABSOLUTE "

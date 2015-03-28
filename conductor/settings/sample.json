@@ -29,7 +29,8 @@
           "optional_when": {
             "days": [1]
           },
-          "filtering_rules": ["ALPHABETICAL"]
+          "filtering_rules": ["ALPHABETICAL"],
+          "copy_to_working_dir": false
         },
         {
           "name": "MOD40"
