@@ -2,9 +2,17 @@
 Custom Exception classes for conductor
 """
 
-class InvalidSettingsError(Exception):
+class ConductorError(Exception):
     pass
 
 
-class InvalidFTPHostError(Exception):
+class InvalidSettingsError(ConductorError):
+    pass
+
+
+class InvalidFTPHostError(ConductorError):
+    pass
+
+
+class RunModeError(ConductorError):
     pass

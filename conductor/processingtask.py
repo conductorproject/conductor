@@ -7,7 +7,10 @@ import logging
 from datetime import datetime
 from tempfile import mkdtemp
 
+from enum import Enum
+
 import taskresource
+import errors
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +50,28 @@ class ProcessingTask(object):
         self._timeslot = timeslot
         self._reconfigure_resources(old_timeslot)
 
-    def __init__(self, name, timeslot, description=""):
+    def __init__(self, name, timeslot, description="",
+                 creation_mode=None, deletion_mode=None,
+                 archiving_mode=None, active_mode=None,
+                 remove_working_dir=True):
+        self.creation_mode = creation_mode
+        self.deletion_mode = deletion_mode
+        self.archiving_mode = archiving_mode
+        self.active_mode = active_mode or creation_mode
         self.name = name
         self.timeslot = timeslot
         self.description = description
         self._inputs = []
         self._outputs = []
+        self.remove_working_dir = remove_working_dir
         self.working_dir = mkdtemp()
         logger.debug("working_dir: {}".format(self.working_dir))
 
     def _reconfigure_resources(self, old_timeslot):
         """
         Update the timeslots of all inputs and outputs
+
+        This method is called whenever the timeslot changes.
 
         :return:
         """
@@ -104,6 +117,18 @@ class ProcessingTask(object):
     def fetch_inputs(self):
         raise NotImplementedError
 
+    def clean_temporary_resources(self):
+        os.removedirs(self.working_dir)
+
+    def run(self):
+        """
+        Execute the sequence of operations defined by the active_mode.
+
+        :return:
+        """
+
+        result, details = self.active_mode.run(self)
+
 
 class TaskContextManagerSettings(object):
 
@@ -114,4 +139,4 @@ class TaskContextManagerSettings(object):
         return self.task
 
     def __exit__(self, exc_type=None, exc_value=None, exc_traceback=None):
-        os.removedirs(self.task.working_dir)
+        self.task.clean_temporary_resources()

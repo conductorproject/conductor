@@ -4,6 +4,7 @@
       "tasks": [
         {
           "name": "pre process MODIS",
+          "run_mode": "CREATION_MODE",
           "fallback_to": "",
           "depends": [],
           "starts_at": null
@@ -36,7 +37,19 @@
           "name": "MOD40"
         }
       ],
-      "outputs": []
+      "outputs": [],
+      "run_modes": {
+        "CREATION_MODE": {
+            "execution_code": "conductor.sampletask.sample_task"
+        },
+        "DELETION_MODE": {
+          "parameters": {
+            "start_days": -3,
+            "frequency_hours": -1,
+            "number_of_timeslots": 10
+          }
+        }
+      }
     }
   },
   "file_resources": {

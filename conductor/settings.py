@@ -12,6 +12,7 @@ import resourcemover
 import processingtask
 import errors
 from timeslotdisplacement import STRATEGY
+from taskrunmode import get_run_mode, RUN_MODES
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class Settings(object):
         return mover
 
     @classmethod
-    def get_processing_task(cls, name, timeslot):
+    def get_processing_task(cls, name, timeslot, run_mode=None):
         try:
             processing_task_settings = cls._processing_task_settings[name]
         except KeyError:
@@ -92,15 +93,22 @@ class Settings(object):
                                               "not defined in the "
                                               "settings".format(name))
         the_settings = processing_task_settings.copy()
-        for k in ("inputs", "outputs"):
+        for k in ("inputs", "outputs", "run_modes"):
             try:
                 del the_settings[k]
             except KeyError:
                 pass
+        run_modes = cls._get_task_run_modes(
+            processing_task_settings.get("run_modes", dict()))
         task = processingtask.ProcessingTask(name, timeslot,
+                                             creation_mode=run_modes[0],
+                                             deletion_mode=run_modes[1],
+                                             archiving_mode=run_modes[2],
+                                             active_mode=run_mode,
                                              **the_settings)
         inputs_settings = processing_task_settings.get("inputs", [])
         outputs_settings = processing_task_settings.get("outputs", [])
+
         cls._add_task_resources(timeslot, inputs_settings, task.add_inputs)
         cls._add_task_resources(timeslot, outputs_settings, task.add_outputs)
         return task
@@ -126,3 +134,29 @@ class Settings(object):
                 optional_when=resource.get("optional_when"),
                 filtering_rules=resource.get("filtering_rules")
             )
+
+    @classmethod
+    def _get_task_run_modes(cls, run_modes_settings):
+        creation_settings = run_modes_settings.get(
+            RUN_MODES.CREATION_MODE.name, dict())
+        creation_execution_code = creation_settings.get("execution_code")
+        creation_params = creation_settings.get("parameters", dict())
+        creation_mode = get_run_mode(RUN_MODES.CREATION_MODE.name,
+                                     creation_execution_code,
+                                     **creation_params)
+        deletion_settings = run_modes_settings.get(
+            RUN_MODES.DELETION_MODE.name, dict())
+        deletion_execution_code = deletion_settings.get("execution_code")
+        deletion_params = deletion_settings.get("parameters", dict())
+        deletion_mode = get_run_mode(RUN_MODES.DELETION_MODE.name,
+                                     deletion_execution_code,
+                                     **deletion_params)
+
+        archiving_settings = run_modes_settings.get(
+            RUN_MODES.ARCHIVING_MODE.name, dict())
+        archiving_execution_code = archiving_settings.get("execution_code")
+        archiving_params = archiving_settings.get("parameters", dict())
+        archiving_mode = get_run_mode(RUN_MODES.ARCHIVING_MODE.name,
+                                      archiving_execution_code,
+                                      **archiving_params)
+        return creation_mode, deletion_mode, archiving_mode
