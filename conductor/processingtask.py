@@ -3,6 +3,7 @@ Processing tasks for conductor.
 """
 
 import os
+import shutil
 import logging
 from datetime import datetime
 from tempfile import mkdtemp
@@ -11,6 +12,8 @@ from enum import Enum
 
 import taskresource
 import errors
+from taskrunmode import RUN_MODES
+import taskobserver
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,10 @@ class ProcessingTask(object):
     _timeslot = None
     _inputs = []
     _outputs = []
+    _run_observers = []
+    _run_progress = 0
+    _run_details = ""
+    _run_state = ""
 
     @property
     def active_inputs(self):
@@ -50,22 +57,56 @@ class ProcessingTask(object):
         self._timeslot = timeslot
         self._reconfigure_resources(old_timeslot)
 
+    @property
+    def run_progress(self):
+        return self._run_progress
+
+    @run_progress.setter
+    def run_progress(self, value):
+        self._run_progress = value
+        self.update_observers()
+
+    @property
+    def run_state(self):
+        return self._run_state
+
+    @run_state.setter
+    def run_state(self, value):
+        self._run_state = value
+        self.update_observers()
+
+    @property
+    def run_details(self):
+        return self._run_details
+
+    @run_details.setter
+    def run_details(self, value):
+        self._run_details = value
+        self.update_observers()
+
     def __init__(self, name, timeslot, description="",
                  creation_mode=None, deletion_mode=None,
                  archiving_mode=None, active_mode=None,
-                 remove_working_dir=True):
+                 remove_working_dir=True, decompress_inputs=True):
         self.creation_mode = creation_mode
         self.deletion_mode = deletion_mode
         self.archiving_mode = archiving_mode
-        self.active_mode = active_mode or creation_mode
         self.name = name
         self.timeslot = timeslot
         self.description = description
         self._inputs = []
         self._outputs = []
         self.remove_working_dir = remove_working_dir
+        self.decompress_inputs = decompress_inputs
         self.working_dir = mkdtemp()
+        self._run_observers = [taskobserver.ConsoleObserver(self)]
+        self.run_details = ""
+        self.run_progress = 0
+        self.run_state = "Not running"
         logger.debug("working_dir: {}".format(self.working_dir))
+
+    def update_observers(self):
+        [obs() for obs in self._run_observers]
 
     def _reconfigure_resources(self, old_timeslot):
         """
@@ -115,19 +156,54 @@ class ProcessingTask(object):
         return found
 
     def fetch_inputs(self):
-        raise NotImplementedError
+        fetched = dict()
+        for inp in self.active_inputs:
+            fetched_path = inp.fetch(self.working_dir)
+            if self.decompress_inputs:
+                fetched_path = inp.file_resource.decompress(fetched_path)
+            fetched[inp] = fetched_path
+        return fetched
 
     def clean_temporary_resources(self):
-        os.removedirs(self.working_dir)
+        parent = os.path.dirname(self.working_dir)
+        shutil.rmtree(self.working_dir)
+        try:
+            os.removedirs(parent)
+        except OSError:
+            pass
 
-    def run(self):
+    def run(self, mode):
         """
         Execute the sequence of operations defined by the active_mode.
 
         :return:
         """
 
-        result, details = self.active_mode.run(self)
+        mode_map = {
+            RUN_MODES.CREATION_MODE: self.run_creation_mode,
+            RUN_MODES.DELETION_MODE: self.run_deletion_mode,
+            RUN_MODES.ARCHIVING_MODE: self.run_archiving_mode,
+        }
+        try:
+            result = mode_map[mode]()
+        except KeyError:
+            raise errors.RunModeError("invalid run_mode {}".format(mode))
+        return result
+
+    def run_creation_mode(self):
+        logger.info("Running '{0.name}' in creation mode...".format(self))
+        result = True
+        return result
+
+    def run_deletion_mode(self):
+        logger.info("Running '{0.name}' in deletion mode...".format(self))
+        result = True
+        return result
+
+    def run_archiving_mode(self):
+        logger.info("Running '{0.name}' in archiving mode...".format(self))
+        result = True
+        return result
 
 
 class TaskContextManagerSettings(object):

@@ -34,7 +34,7 @@
           "copy_to_working_dir": false
         },
         {
-          "name": "MOD40"
+          "name": "Copernicus LST SOAM tile"
         }
       ],
       "outputs": [],
@@ -74,6 +74,24 @@
           "remote_movers": [{"name": "gridpt25"}, {"name": "arquivo_outputs"}]
         },
         {"path": "fake/path"}
+      ]
+    },
+    "Copernicus LST SOAM tile": {
+      "search_pattern": "g2_BIOPAR_LST_{0.year}{0.month:02d}{0.day:02d}{0.hour:02d}{0.minute:02d}_SOAM_GEO_v1",
+      "search_paths": [
+        {
+          "path": "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/LST/{0.year}/{0.month:02d}/{0.day:02d}/{0.hour:02d}",
+          "remote_movers": [
+            {
+              "name": "gridpt25",
+              "protocol": "FTP"
+            },
+            {
+              "name": "arquivo_outputs",
+              "protocol": "FTP"
+            }
+          ]
+        }
       ]
     },
     "MOD40": {

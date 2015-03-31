@@ -82,6 +82,11 @@ class TaskResource(object):
             )
         return found_mover, chosen_path
 
+    def fetch(self, destination_dir):
+        fetched_path = self.file_resource.fetch(
+            destination_dir, filtering_rules=self.timeslot_choosing_rules)
+        return fetched_path
+
 
 class TaskResourceFactory(object):
 

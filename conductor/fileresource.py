@@ -2,6 +2,8 @@
 File resource classes for conductor
 """
 
+import os
+import bz2
 from datetime import datetime
 import logging
 
@@ -92,7 +94,7 @@ class FileResource(object):
 
     @property
     def search_paths(self):
-        return self._search_paths
+        return [sp.path_pattern.format(self) for sp in self._search_paths]
 
     def __init__(self, name, timeslot=None, local_mover=None,
                  search_pattern="", description=""):
@@ -107,7 +109,8 @@ class FileResource(object):
         return "{0.__class__.__name__}({0.name}, {0.timeslot})".format(self)
 
     def add_search_path(self, path_pattern, remote_movers=None):
-        sp = ResourceSearchPath(path_pattern, self, remote_movers)
+        sp = ResourceSearchPath(path_pattern,
+                                remote_movers=remote_movers)
         self._search_paths.append(sp)
 
     def find(self):
@@ -140,16 +143,16 @@ class FileResource(object):
         found_paths = []
         if self.local_mover is not None:
             logger.debug("Searching in the local mover...")
-            path_patterns = ["/".join((p.path_pattern, self.search_pattern))
-                             for p in self.search_paths]
+            path_patterns = ["/".join((p, self.search_pattern)) for
+                             p in self.search_paths]
             found_paths = self.local_mover.find(*path_patterns)
             found_mover = self.local_mover if len(found_paths) > 0 else None
         if self.use_predefined_movers and len(found_paths) == 0:
             logger.debug("Searching in remote movers...")
             index = 0
             while len(found_paths) == 0 and index < len(self.search_paths):
-                sp = self.search_paths[index]
-                found_mover, found_paths = sp.find_in_remotes()
+                sp = self._search_paths[index]
+                found_mover, found_paths = sp.find_in_remotes(self)
                 index += 1
         return found_mover, found_paths
 
@@ -166,8 +169,23 @@ class FileResource(object):
         fetched = None
         if found_mover is not None:
             chosen = self.choose(found_paths, filtering_rules=filtering_rules)
+            logger.debug("about to use mover {} for fetching "
+                         "{}...".format(found_mover, chosen))
             fetched = found_mover.fetch(destination_dir, chosen)
         return fetched[0]
+
+    def decompress(self, *paths):
+        result = []
+        for p in paths:
+            dirname, bzname = os.path.split(p)
+            fname, extension = os.path.splitext(p)
+            decompressed = os.path.join(dirname, fname)
+            if extension == ".bz2":
+                with bz2.BZ2File(p) as bzh, open(decompressed, "wb") as fh:
+                    fh.write(bzh.read())
+            result.append(decompressed)
+            os.remove(p)
+        return result
 
     def delete(self, use_remote_mover=False, filtering_rules=None):
         found_mover, found_paths = self.find()
@@ -209,30 +227,14 @@ class FileResource(object):
 
 
 class ResourceSearchPath(object):
-    _path_pattern = ""
-    file_resource = None
     remote_movers = []
+    path_pattern = ""
 
-    @property
-    def path_pattern(self):
-        try:
-            p = self._path_pattern.format(self.file_resource)
-        except AttributeError as e:  # self.file_resource is None
-            logger.debug("AQUI: {}".format(e))
-            logger.debug("self.file_resource: {}".format(self.file_resource))
-            p = self._path_pattern
-        return p
-
-    @path_pattern.setter
-    def path_pattern(self, path_pattern):
-        self._path_pattern = path_pattern
-
-    def __init__(self, path_pattern, file_resource, remote_movers=None):
+    def __init__(self, path_pattern, remote_movers=None):
         self.path_pattern = path_pattern
-        self.file_resource = file_resource
         self.remote_movers = remote_movers or []
 
-    def find_in_remotes(self):
+    def find_in_remotes(self, file_resource):
         found = []
         in_mover = None
         index = 0
@@ -240,7 +242,11 @@ class ResourceSearchPath(object):
             try:
                 mover = self.remote_movers[index]
                 logger.debug("About to search in mover {}...".format(mover))
-                found = mover.find(self.path_pattern)
+                full_pattern = os.path.join(
+                    self.path_pattern.format(file_resource),
+                    file_resource.search_pattern
+                )
+                found = mover.find(full_pattern)
                 in_mover = mover if len(found) > 0 else None
             except AttributeError:
                 raise ValueError("remote_movers must be a list of RemoteMover "

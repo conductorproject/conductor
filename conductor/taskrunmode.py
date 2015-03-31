@@ -43,23 +43,6 @@ class CreationMode(TaskRunMode):
     def __init__(self, execution_code):
         super(CreationMode, self).__init__(execution_code)
 
-    def run(self, task):
-        logger.debug("Running {} in Creation Mode...".format(task.name))
-        all_details = ""
-        run_result = True
-        #fetched, fetch_details = task.fetch_inputs()
-        #able, able_details = task.able_to_execute(fetched)
-        #if able:
-        #    pre_steps, pre_details = task.run_pre_execution(fetched)
-        #    created, exec_details = task.execute(pre_steps)
-        #    moved, move_details = task.move_to_output_dirs(created)
-        #    post_steps, post_details = task.run_post_execution(moved)
-        #    if task.remove_working_dir:
-        #        cleaned, remove_details = task.clean_temporary_resources()
-        #else:
-        #    run_result = False
-        return run_result, all_details
-
 
 class DeletionMode(TaskRunMode):
 
@@ -101,12 +84,6 @@ class DeletionMode(TaskRunMode):
             self.execution_code,
             ", ".join((sy, sm, sd, sH, sM, sD, fy, fm, fd, fH, fM, fD))
         )
-
-    def run(self, task):
-        logger.debug("Running {} in Deletion Mode...".format(task.name))
-        all_details = ""
-        run_result = True
-        return run_result, all_details
 
 
 class ArchivingMode(TaskRunMode):
