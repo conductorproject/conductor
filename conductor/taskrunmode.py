@@ -10,18 +10,18 @@ import errors
 
 logger = logging.getLogger(__name__)
 
-RUN_MODES = Enum("RUN_MODES", "CREATION_MODE "
+RUN_MODE = Enum("RUN_MODES", "CREATION_MODE "
                               "DELETION_MODE "
-                              "ARCHIVING_MODE")
+                              "MOVING_MODE")
 
 def get_run_mode(name, execution_code=None, **params):
     object_map = {
-        RUN_MODES.CREATION_MODE: CreationMode,
-        RUN_MODES.DELETION_MODE: DeletionMode,
-        RUN_MODES.ARCHIVING_MODE: ArchivingMode,
+        RUN_MODE.CREATION_MODE: CreationMode,
+        RUN_MODE.DELETION_MODE: DeletionMode,
+        RUN_MODE.MOVING_MODE: MovingMode,
     }
     try:
-        mode = RUN_MODES[name]
+        mode = RUN_MODE[name]
         run_mode = object_map[mode](execution_code, **params)
     except KeyError:
         raise errors.RunModeError("Mode '{}' is invalid".format(name))
@@ -86,5 +86,5 @@ class DeletionMode(TaskRunMode):
         )
 
 
-class ArchivingMode(TaskRunMode):
+class MovingMode(TaskRunMode):
     pass

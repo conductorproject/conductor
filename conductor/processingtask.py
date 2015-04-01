@@ -12,7 +12,7 @@ from enum import Enum
 
 import taskresource
 import errors
-from taskrunmode import RUN_MODES
+from taskrunmode import RUN_MODE
 import taskobserver
 
 logger = logging.getLogger(__name__)
@@ -158,9 +158,10 @@ class ProcessingTask(object):
     def fetch_inputs(self):
         fetched = dict()
         for inp in self.active_inputs:
+            logger.info("fetching '{}'...".format(inp.file_resource.name))
             fetched_path = inp.fetch(self.working_dir)
-            if self.decompress_inputs:
-                fetched_path = inp.file_resource.decompress(fetched_path)
+            if fetched_path is not None and self.decompress_inputs:
+                fetched_path, = inp.file_resource.decompress(fetched_path)
             fetched[inp] = fetched_path
         return fetched
 
@@ -180,19 +181,28 @@ class ProcessingTask(object):
         """
 
         mode_map = {
-            RUN_MODES.CREATION_MODE: self.run_creation_mode,
-            RUN_MODES.DELETION_MODE: self.run_deletion_mode,
-            RUN_MODES.ARCHIVING_MODE: self.run_archiving_mode,
+            RUN_MODE.CREATION_MODE: self.run_creation_mode,
+            RUN_MODE.DELETION_MODE: self.run_deletion_mode,
+            RUN_MODE.MOVING_MODE: self.run_moving_mode,
         }
         try:
-            result = mode_map[mode]()
+            result = mode_map[mode](mode)
         except KeyError:
             raise errors.RunModeError("invalid run_mode {}".format(mode))
         return result
 
-    def run_creation_mode(self):
+    def run_creation_mode(self, mode):
         logger.info("Running '{0.name}' in creation mode...".format(self))
         result = True
+        self.initialize_mode(mode)
+        fetched = self.fetch_inputs()
+        able, able_details = self.able_to_execute(fetched)
+        if able:
+            execution_result = self.execute(fetched)
+        else:
+            raise errors.ExecutionCannotStartError(able_details)
+        self.move_outputs(execution_result)
+        self.finalize_mode(mode)
         return result
 
     def run_deletion_mode(self):
@@ -200,10 +210,80 @@ class ProcessingTask(object):
         result = True
         return result
 
-    def run_archiving_mode(self):
-        logger.info("Running '{0.name}' in archiving mode...".format(self))
+    def run_moving_mode(self):
+        logger.info("Running '{0.name}' in moving mode...".format(self))
         result = True
         return result
+
+    def initialize_mode(self, mode):
+        """
+        Perform some task specific initialization.
+
+        This method can be reimplemented in child classes in order to
+        perform some pre-processing steps. The default implementation
+        does nothing.
+
+        :param mode:
+        :type mode: taskrunmode.RUN_MODE
+        :return: None
+        """
+        pass
+
+    def finalize_mode(self, mode):
+        """
+        Perform some task specific finalization.
+
+        This method can be reimplemented in child classes in order to
+        perform some post-processing steps. The default implementation
+        does nothing.
+
+        :param mode:
+        :type mode: taskrunmode.RUN_MODE
+        :return: None
+        """
+        pass
+
+    def able_to_execute(self, fetched_inputs):
+        """
+        Determine if the task has all of the necessary conditions to execute.
+
+        :param fetched_inputs:
+        :return:
+        """
+
+        all_ok = []
+        details = []
+        for inp, path in fetched_inputs.iteritems():
+            if inp in self.mandatory_inputs:
+                if path is not None:
+                    this_ok = True
+                else:
+                    this_ok = False
+                    details.append("Mandatory input '{}' is not "
+                                   "available".format(inp.file_resource.name))
+            else:
+                this_ok = True
+            all_ok.append(this_ok)
+        result = True if all(all_ok) else False
+        return result, ", ".join(details)
+
+    def execute(self, fetched):
+        """
+        Perform task specific calculations.
+
+        This method must be reimplemented in derived classes. The default
+        implementation does nothing.
+
+        :param fetched:
+        :return:
+        """
+        return True
+
+    def move_outputs(self, execution_result):
+        raise NotImplementedError
+
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__, self.name)
 
 
 class TaskContextManagerSettings(object):

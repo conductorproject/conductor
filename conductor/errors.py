@@ -16,3 +16,7 @@ class InvalidFTPHostError(ConductorError):
 
 class RunModeError(ConductorError):
     pass
+
+
+class ExecutionCannotStartError(ConductorError):
+    pass

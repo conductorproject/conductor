@@ -2,12 +2,48 @@
 Unit tests for conductor's fileresource module
 """
 
+import os
 from datetime import datetime
+from calendar import monthrange
 
 from nose.tools import eq_
 from nose.plugins.skip import SkipTest
+import mock
 
 import conductor.fileresource
+from conductor.resourcemover import LocalMover
+
+class TestResourceSearchPath(object):
+
+    @classmethod
+    def setup_class(cls):
+        cls.path_pattern = "dummy/path"
+        cls.resource_movers = [LocalMover()]
+        cls.search_path = conductor.fileresource.ResourceSearchPath(
+            cls.path_pattern, remote_movers=cls.resource_movers)
+
+    @mock.patch(conductor.fileresource.FileResource)
+    @mock.patch.object(LocalMover, "find")
+    def test_find_in_remotes(self, mock_find, mock_file_resource):
+        ts = datetime(2015, 1, 1)
+        mock_file_resource.timeslot = ts
+        p = "dummy_pattern_{0.year}_{0.year_day:03d}"
+        mock_file_resource.search_pattern = (p)
+        mover = LocalMover()
+        mover.data_dirs = ["/fake/home"]
+        self.search_path.remote_movers = [mover]
+        patt = p.replace("{0.year}", ts.strftime("%Y"))
+        patt = p.replace("{0.year_day:03d}", monthrange(ts.year, ts.month)[1])
+        expected_pattern = os.path.join(self.path_pattern, patt)
+        in_mover, found = self.search_path.find_in_remotes(mock_file_resource)
+        mock_find.return_value = expected_pattern
+        mock_find.assert_called_with(expected_pattern)
+        eq_(mover, in_mover)
+        eq_(found, expected_pattern)
+
+
+
+
 
 class TestFileResource(object):
 

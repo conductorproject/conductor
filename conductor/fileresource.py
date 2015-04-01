@@ -171,8 +171,8 @@ class FileResource(object):
             chosen = self.choose(found_paths, filtering_rules=filtering_rules)
             logger.debug("about to use mover {} for fetching "
                          "{}...".format(found_mover, chosen))
-            fetched = found_mover.fetch(destination_dir, chosen)
-        return fetched[0]
+            fetched, = found_mover.fetch(destination_dir, chosen)
+        return fetched
 
     def decompress(self, *paths):
         result = []

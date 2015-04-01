@@ -35,7 +35,8 @@
         },
         {
           "name": "Copernicus LST SOAM tile"
-        }
+        },
+        {"name": "MOD40"}
       ],
       "outputs": [],
       "run_modes": {
