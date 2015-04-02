@@ -13,36 +13,41 @@ import mock
 import conductor.fileresource
 from conductor.resourcemover import LocalMover
 
+
 class TestResourceSearchPath(object):
 
     @classmethod
     def setup_class(cls):
+        cls.timeslot = datetime(2015, 1, 1)
         cls.path_pattern = "dummy/path"
+        cls.file_resource_search_pattern = "dummy_pattern_{0.year}_{0.year_day:03d}"
         cls.resource_movers = [LocalMover()]
         cls.search_path = conductor.fileresource.ResourceSearchPath(
             cls.path_pattern, remote_movers=cls.resource_movers)
+        cls.search_path.remote_movers = [
+            LocalMover(data_dirs=["/fake/root"])
+        ]
 
-    @mock.patch(conductor.fileresource.FileResource)
+    @mock.patch("conductor.fileresource.FileResource")
     @mock.patch.object(LocalMover, "find")
     def test_find_in_remotes(self, mock_find, mock_file_resource):
-        ts = datetime(2015, 1, 1)
-        mock_file_resource.timeslot = ts
-        p = "dummy_pattern_{0.year}_{0.year_day:03d}"
-        mock_file_resource.search_pattern = (p)
-        mover = LocalMover()
-        mover.data_dirs = ["/fake/home"]
-        self.search_path.remote_movers = [mover]
-        patt = p.replace("{0.year}", ts.strftime("%Y"))
-        patt = p.replace("{0.year_day:03d}", monthrange(ts.year, ts.month)[1])
-        expected_pattern = os.path.join(self.path_pattern, patt)
+        expected_pattern = os.path.join(self.path_pattern,
+                                        self.file_resource_search_pattern)
+        mock_file_resource.timeslot = self.timeslot
+        mock_file_resource.search_pattern = self.file_resource_search_pattern
+        patt = self.file_resource_search_pattern.replace(
+            "{0.year}", self.timeslot.strftime("%Y"))
+        patt = patt.replace("{0.year_day:03d}", "{:03d}".format(
+            monthrange(self.timeslot.year, self.timeslot.month)[1]))
+        expected_found = [
+            os.path.join(self.search_path.remote_movers[0].data_dirs[0],
+                         self.path_pattern, patt)
+        ]
+        mock_find.return_value = expected_found
         in_mover, found = self.search_path.find_in_remotes(mock_file_resource)
-        mock_find.return_value = expected_pattern
         mock_find.assert_called_with(expected_pattern)
-        eq_(mover, in_mover)
-        eq_(found, expected_pattern)
-
-
-
+        eq_(self.search_path.remote_movers[0], in_mover)
+        eq_(found, expected_found)
 
 
 class TestFileResource(object):
@@ -50,6 +55,7 @@ class TestFileResource(object):
     @classmethod
     def setup_class(cls):
         cls.timeslot = datetime(2015, 12, 10)
+        cls.mover = LocalMover(data_dirs=["/fake/root"])
         cls.search_pattern = "dummy_pattern_{0.year}_{0.year_day:03d}"
         cls.search_paths = [
             "fake/path/{0.month:02d}",
@@ -60,24 +66,28 @@ class TestFileResource(object):
     def setup(self):
         self.file_resource.timeslot = self.timeslot
         self.file_resource.search_pattern = self.search_pattern
-        self.file_resource.search_paths = self.search_paths
+        for p in self.search_paths:
+            self.file_resource.add_search_path(p, remote_movers=[self.mover])
 
     def teardown(self):
         self.file_resource.timeslot = None
-        self.file_resource.search_paths = []
+        self.file_resource._search_paths = []
         self.file_resource.search_pattern = ""
 
     def test_timeslot(self):
-        """
-        Timeslot and related properties have correct values
-        """
-        eq_(self.file_resource.timeslot, self.timeslot)
-        eq_(self.file_resource.year, self.timeslot.year)
-        eq_(self.file_resource.month, self.timeslot.month)
-        eq_(self.file_resource.day, self.timeslot.day)
-        eq_(self.file_resource.hour, self.timeslot.hour)
-        eq_(self.file_resource.minute, self.timeslot.minute)
-        eq_(self.file_resource.year_day, self.timeslot.timetuple().tm_yday)
+        """Timeslot and related properties have correct values"""
+        for day in range(1, 25, 5):  # valid days for every month
+            ts = datetime(self.timeslot.year, self.timeslot.month, day)
+            self.file_resource.timeslot = ts
+            eq_(self.file_resource.timeslot, ts)
+            eq_(self.file_resource.year, ts.year)
+            eq_(self.file_resource.month, ts.month)
+            eq_(self.file_resource.day, ts.day)
+            eq_(self.file_resource.hour, ts.hour)
+            eq_(self.file_resource.minute, ts.minute)
+            eq_(self.file_resource.year_day, ts.timetuple().tm_yday)
+            eq_(self.file_resource.dekade,
+                1 if ts.day < 11 else (2 if ts.day < 21 else 3))
         self.file_resource.timeslot = None
         eq_(self.file_resource.year, None)
         eq_(self.file_resource.month, None)
@@ -85,23 +95,25 @@ class TestFileResource(object):
         eq_(self.file_resource.hour, None)
         eq_(self.file_resource.minute, None)
         eq_(self.file_resource.year_day, None)
+        eq_(self.file_resource.dekade, None)
 
     def test_file_pattern_substitution(self):
-        """
-        The substitutions on the file pattern are correct
-        """
-        eq_(self.file_resource.search_pattern, "dummy_pattern_{}_{}".format(
-            self.timeslot.year, self.timeslot.timetuple().tm_yday))
+        """Substitutions on the file pattern are correct"""
+        expected = self.search_pattern.replace("{0.year}",
+                                               self.timeslot.strftime("%Y"))
+        expected = expected.replace(
+            "{0.year_day:03d}",
+            "{:03d}".format(self.timeslot.timetuple().tm_yday)
+        )
+        eq_(self.file_resource.search_pattern, expected)
 
-    def test_file_path_substitution(self):
-        """
-        The substitutions on the file paths are correct
-        """
-        eq_(self.file_resource.search_paths[0],
-            "fake/path/{0.month:02d}".format(self.timeslot))
-
-    def test_find_local(self):
-        raise SkipTest
+    @mock.patch.object(LocalMover, "find")
+    def test_find_local(self, mock_find):
+        found_paths = self.file_resource.find()
+        for p in self.search_paths:
+            expected_pattern = self.search_pattern.replace("")
+            full_pattern = os.path.join(p, self.search_pattern)
+            assert mock_find.assert_called_with(full_pattern)
 
     def test_find_predefined_remote_movers(self):
         raise SkipTest
