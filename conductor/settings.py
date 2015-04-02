@@ -133,7 +133,8 @@ class Settings(object):
                 strategy_params=strategy_params,
                 except_when=resource.get("except_when"),
                 optional_when=resource.get("optional_when"),
-                filtering_rules=resource.get("filtering_rules")
+                filtering_rules=resource.get("filtering_rules"),
+                copy_to_working_dir=resource.get("copy_to_working_dir", True)
             )
 
     def _get_task_run_modes(self, run_modes_settings):

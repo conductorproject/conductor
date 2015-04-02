@@ -20,3 +20,7 @@ class RunModeError(ConductorError):
 
 class ExecutionCannotStartError(ConductorError):
     pass
+
+
+class InvalidExecutionError(ConductorError):
+    pass

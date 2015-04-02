@@ -84,6 +84,14 @@ class ProcessingTask(object):
         self._run_details = value
         self.update_observers()
 
+    @property
+    def working_dir_inputs(self):
+        return os.path.join(self.working_dir, "inputs")
+
+    @property
+    def working_dir_outputs(self):
+        return os.path.join(self.working_dir, "outputs")
+
     def __init__(self, name, timeslot, description="",
                  creation_mode=None, deletion_mode=None,
                  archiving_mode=None, active_mode=None,
@@ -123,23 +131,26 @@ class ProcessingTask(object):
             resource.file_resource.timeslot = self.timeslot + delta
 
     def add_inputs(self, file_resource, strategy=None, strategy_params=None,
-                   except_when=None, optional_when=None, filtering_rules=None):
+                   except_when=None, optional_when=None, filtering_rules=None,
+                   copy_to_working_dir=True):
         task_resources = taskresource.factory.get_resources(
             file_resource, base_timeslot=self.timeslot,
             strategy=strategy, strategy_params=strategy_params,
             except_when=except_when, optional_when=optional_when,
-            filtering_rules=filtering_rules
+            filtering_rules=filtering_rules,
+            copy_to_working_dir=copy_to_working_dir
         )
         self._inputs.extend(task_resources)
 
     def add_outputs(self, file_resource, strategy=None, strategy_params=None,
-                    except_when=None, optional_when=None,
-                    filtering_rules=None):
+                    except_when=None, optional_when=None, filtering_rules=None,
+                    copy_to_working_dir=True):
         task_resources = taskresource.factory.get_resources(
             file_resource, base_timeslot=self.timeslot,
             strategy=strategy, strategy_params=strategy_params,
             except_when=except_when, optional_when=optional_when,
-            filtering_rules=filtering_rules
+            filtering_rules=filtering_rules,
+            copy_to_working_dir=copy_to_working_dir
         )
         self._outputs.extend(task_resources)
 
@@ -155,11 +166,24 @@ class ProcessingTask(object):
             found[outp] = outp.find()
         return found
 
+    def find_temporary_outputs(self):
+        """
+        Find the task's outputs in the working directory
+        :return:
+        """
+        found = dict()
+        for outp in self.active_outputs:
+            temp_path = os.path.join(self.working_dir_outputs,
+                                     outp.file_resource.search_pattern)
+            f = outp.file_resource.local_mover.find(temp_path)
+            found[outp] = f
+        return found
+
     def fetch_inputs(self):
         fetched = dict()
         for inp in self.active_inputs:
             logger.info("fetching '{}'...".format(inp.file_resource.name))
-            fetched_path = inp.fetch(self.working_dir)
+            fetched_path = inp.fetch(self.working_dir_inputs)
             if fetched_path is not None and self.decompress_inputs:
                 fetched_path, = inp.file_resource.decompress(fetched_path)
             fetched[inp] = fetched_path
@@ -199,10 +223,16 @@ class ProcessingTask(object):
         able, able_details = self.able_to_execute(fetched)
         if able:
             execution_result = self.execute(fetched)
+            generated_outputs, generated_details = self.check_for_outputs()
+            if not generated_outputs:
+                raise errors.InvalidExecutionError(
+                    "The task executed correctly but not all of the expected "
+                    "outputs were found: {}".format(generated_details)
+                )
+            self.move_outputs(execution_result)
+            self.finalize_mode(mode)
         else:
             raise errors.ExecutionCannotStartError(able_details)
-        self.move_outputs(execution_result)
-        self.finalize_mode(mode)
         return result
 
     def run_deletion_mode(self):
@@ -266,6 +296,20 @@ class ProcessingTask(object):
             all_ok.append(this_ok)
         result = True if all(all_ok) else False
         return result, ", ".join(details)
+
+    def check_for_outputs(self):
+        """
+        Confirm that the expected outputs have been generated.
+
+        :return:
+        """
+        details = []
+        all_found = True
+        for outp, temp_path in self.find_temporary_outputs():
+            all_found = all_found and temp_path is not None
+            if temp_path is None:
+                details.append("Could not find output: {}".format(outp))
+        return all_found, details
 
     def execute(self, fetched):
         """

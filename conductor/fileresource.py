@@ -169,7 +169,7 @@ class FileResource(object):
         fetched = None
         if found_mover is not None:
             chosen = self.choose(found_paths, filtering_rules=filtering_rules)
-            logger.debug("about to use mover {} for fetching "
+            logger.debug("About to use mover {} for fetching "
                          "{}...".format(found_mover, chosen))
             fetched, = found_mover.fetch(destination_dir, chosen)
         return fetched
@@ -183,8 +183,8 @@ class FileResource(object):
             if extension == ".bz2":
                 with bz2.BZ2File(p) as bzh, open(decompressed, "wb") as fh:
                     fh.write(bzh.read())
+                os.remove(p)
             result.append(decompressed)
-            os.remove(p)
         return result
 
     def delete(self, use_remote_mover=False, filtering_rules=None):

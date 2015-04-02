@@ -20,9 +20,9 @@
           "name": "Copernicus LST NOAM tile",
           "strategy": {
             "name": "MULTIPLE_ORDERED",
-            "start_days": -1,
-            "frequency_hours": -1,
-            "number_of_timeslots": 10
+            "start_days": 0,
+            "frequency_hours": 1,
+            "number_of_timeslots": 22
           },
           "except_when": {
             "hours": [1, 2, 3, 4]

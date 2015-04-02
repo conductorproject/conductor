@@ -49,7 +49,8 @@ class TaskResource(object):
                  optional_when_dekades=None, except_when_years=None,
                  except_when_months=None, except_when_days=None,
                  except_when_hours=None, except_when_minutes=None,
-                 except_when_dekades=None, timeslot_choosing_rules=None):
+                 except_when_dekades=None, timeslot_choosing_rules=None,
+                 copy_to_working_dir=True):
         self.file_resource = file_resource
         self.optional_when = {
             "years": optional_when_years or [],
@@ -68,6 +69,7 @@ class TaskResource(object):
             "dekades": except_when_dekades or [],
         }
         self.timeslot_choosing_rules = timeslot_choosing_rules
+        self.copy_to_working_dir = copy_to_working_dir
 
     def __repr__(self):
         return "{}({})".format(self.__class__.__name__, self.file_resource)
@@ -83,8 +85,19 @@ class TaskResource(object):
         return found_mover, chosen_path
 
     def fetch(self, destination_dir):
-        fetched_path = self.file_resource.fetch(
-            destination_dir, filtering_rules=self.timeslot_choosing_rules)
+        if self.copy_to_working_dir:
+            fetched_path = self.file_resource.fetch(
+                destination_dir,
+                filtering_rules=self.timeslot_choosing_rules
+            )
+        else:
+            found_mover, found_path = self.find()
+            if found_mover == self.file_resource.local_mover:
+                logger.debug("Not copying the file, only returning its "
+                             "current location")
+                fetched_path = found_path
+            else:
+                fetched_path = None
         return fetched_path
 
 
@@ -92,7 +105,8 @@ class TaskResourceFactory(object):
 
     def get_resources(self, resource, base_timeslot=None, strategy=None,
                       strategy_params=None, except_when=None,
-                      optional_when=None, filtering_rules=None):
+                      optional_when=None, filtering_rules=None,
+                      copy_to_working_dir=True):
         """
         Create new TaskResources
 
@@ -173,7 +187,8 @@ class TaskResourceFactory(object):
                 except_when_hours=except_when.get("hours"),
                 except_when_minutes=except_when.get("minutes"),
                 except_when_dekades=except_when.get("dekades"),
-                timeslot_choosing_rules=filtering_rules
+                timeslot_choosing_rules=filtering_rules,
+                copy_to_working_dir=copy_to_working_dir
             ))
         return result
 
