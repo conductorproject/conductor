@@ -1,0 +1,70 @@
+{
+    "resources": [
+        {
+            "name": "teste",
+            "collection": "LST",
+            "urn": "copernicus_gl:ipma:{0.collection.short_name}:{0.timeslot_string}",
+            "get_locations": [
+                {
+                    "mover": "server1",
+                    "scheme": "ftp",
+                    "relative_paths": [
+                        "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
+                    ],
+                    "authorization": "scheme_user_information",
+                    "media_type": "HDF5-Copernicus"
+                },
+                {
+                    "mover": "server1",
+                    "scheme": "sftp",
+                    "relative_paths": [
+                        "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
+                    ],
+                    "authorization": "scheme_user_information_authorization",
+                    "media_type": "HDF5-Copernicus"
+                },
+                {
+                    "mover": "server1",
+                    "scheme": "http",
+                    "relative_paths": [
+                        "products/{0.collection.short_name}?timeslot={0.timeslot_string}#resource"
+                    ],
+                    "authorization": "api_key_authorization",
+                    "media_type": "HDF5-Copernicus"
+                }
+            ]
+        }
+    ],
+    "movers": [
+        {
+            "name": "server1",
+            "domain": "geo2.ipma.pt",
+            "schemes": [
+                {
+                    "scheme_name": "ftp",
+                    "user_name": "geo2",
+                    "user_password": "geo2123",
+                    "base_paths": [
+                        "/home/geo2/test_data/giosystem/data"
+                    ]
+                },
+                {
+                    "scheme_name": "http",
+                    "port_number": null,
+                    "user_name": "ricardo",
+                    "user_password": "r",
+                    "api_key": "mykey",
+                    "base_paths": [
+                        "/giosystem/files"
+                    ]
+                }
+            ]
+        }
+    ],
+    "collections": [
+        {
+            "name": "Land Surface Temperature",
+            "short_name": "LST"
+        }
+    ]
+}

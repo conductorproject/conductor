@@ -30,6 +30,7 @@ class Settings(object):
         self._file_resource_settings = dict()
         self._processing_task_settings = dict()
         self._mover_settings = dict()
+        self._scheme_settings = dict()
 
     def get_settings(self, uri):
         parsed_uri = urlsplit(uri)
