@@ -2,57 +2,152 @@
 Resource class for conductor
 """
 
+import os
+import socket
 import logging
 import pytz
 import datetime
 import dateutil.parser
 import json
+from urlparse import urlsplit
 
 import enum
+from ftputil import FTPHost
+import ftputil.error
 
 logger = logging.getLogger(__name__)
 
 
+class UrlHandlerFactory(object):
+
+    @staticmethod
+    def get_handler(scheme):
+        result = None
+        if scheme == ConductorScheme.FILE:
+            result = FileUrlHandler()
+        elif scheme == ConductorScheme.FTP:
+            result = FtpUrlHandler()
+        else:
+            logger.error("Scheme {!r} is not supported".format(scheme))
+        return result
+
+
+url_handler_factory = UrlHandlerFactory()
+
+
+class BaseUrlHandler(object):
+
+    @staticmethod
+    def create_local_directory(path):
+        if not os.path.isdir(path):
+            os.makedirs(path)
+
+
+class FileUrlHandler(BaseUrlHandler):
+
+    def get_url(self, url, destination_directory):
+        path = url.path_part
+        raise NotImplementedError
+
+
+class FtpUrlHandler(BaseUrlHandler):
+
+    def get_url(self, url, destination_directory):
+        """
+        Get the representation of the resource available at the input URL
+        """
+
+        self.create_local_directory(destination_directory)
+        try:
+            with FTPHost(url.host_name, url.user_name, url.user_password) as host:
+                host.download_if_newer(url.path_part, destination_directory)
+        except ftputil.error.PermanentError as err:
+            error_code, sep, msg = err.args[0].partition(" ")
+            if int(error_code) == 530:
+                logger.error("Invalid login: {}".format(msg))
+            elif int(error_code) == 550:
+                logger.error("Invalid path: {}".format(msg))
+            raise
+        except ftputil.error.FTPOSError as err:
+            code, msg = err.args
+            if code == -2:
+                logger.error("Server {} not found: {}".format(
+                    url.host_name, msg))
+            raise
+
+
+class ConductorScheme(enum.Enum):
+    FILE = 1
+    FTP = 2
+    SFTP = 3
+    HTTP = 4
+
+
 class Settings(object):
 
-    _movers = dict()
-    _collections = dict()
-    _resources = dict()
+    settings_source = None
+    _servers = []
+    _collections = []
+    _resources = []
 
     def __init__(self):
-        self._movers = dict()
+        self.settings_source = None
+        self._servers = dict()
         self._collections = dict()
         self._resources = dict()
+
+    def __repr__(self):
+        return "{0}.{1.__class__.__name__}({1.settings_source!r})".format(
+            __name__, self)
+
+    def available_resources(self):
+        return [r["name"] for r in self._resources]
+
+    def available_collections(self):
+        return [r["short_name"] for r in self._collections]
+
+    def available_servers(self):
+        return [r["name"] for r in self._servers]
+
+    def get_settings(self, url):
+        parsed_url = urlsplit(url)
+        if parsed_url.scheme == "file":
+            self.get_settings_from_file(parsed_url.path)
+            self.settings_source = url
+        else:
+            logger.error("unsupported url scheme: "
+                         "{}".format(parsed_url.scheme))
 
     def get_settings_from_file(self, path):
         try:
             with open(path) as fh:
                 all_settings = json.load(fh)
-                self._movers = all_settings.get("movers", {})
+                self._servers = all_settings.get("servers", {})
                 self._collections = all_settings.get("collections", {})
                 self._resources = all_settings.get("resources", {})
         except IOError as e:
             logger.error(e)
 
-    def get_mover(self, name):
+    def get_server(self, name):
         try:
-            settings = [i for i in self._movers if i["name"] == name][0]
+            settings = [i for i in self._servers if i["name"] == name][0]
         except IndexError:
-            logger.error("mover {} is not defined in the "
+            logger.error("server {} is not defined in the "
                          "settings".format(name))
             raise 
-        mover_get_schemes = []
+        server_get_schemes = []
         for scheme_settings in settings["schemes"]:
-            ms = MoverScheme(
+            ss = ServerScheme(
                 scheme_settings["scheme_name"],
                 scheme_settings["base_paths"],
-                scheme_settings["user_name"],
-                scheme_settings["user_password"],
+                port_number=scheme_settings.get("port_number"),
+                user_name=scheme_settings.get("user_name"),
+                user_password=scheme_settings.get("user_password"),
             )
-            mover_get_schemes.append(ms)
-        mover = ConductorMover(name, domain=settings["domain"],
-                               get_schemes=mover_get_schemes)
-        return mover
+            server_get_schemes.append(ss)
+        server = ConductorServer(name, domain=settings["domain"],
+                                 schemes_get=server_get_schemes)
+        return server
 
     def get_collection(self, short_name):
         try:
@@ -60,7 +155,7 @@ class Settings(object):
                         i["short_name"] == short_name][0]
         except IndexError:
             logger.error("collection {} is not defined in the "
-                         "settings".format(name_or_short_name))
+                         "settings".format(short_name))
             raise 
         collection = ConductorCollection(short_name, name=settings.get("name"))
         return collection
@@ -71,23 +166,27 @@ class Settings(object):
         except IndexError:
             logger.error("resource {} is not defined in the "
                          "settings".format(name))
-            raise 
-        collection = self.get_collection(settings["collection"])
-        resource = ConductorResource(name, collection, settings["urn"],
-                                     timeslot)
+            raise
+        collection = None
+        if settings.get("collection") is not None:
+            collection = self.get_collection(settings["collection"])
+        resource = ConductorResource(name, settings["urn"],
+                                     collection=collection,
+                                     timeslot= timeslot)
         for loc in settings["get_locations"]:
             try:
-                mover = self.get_mover(loc["mover"])
-                scheme = [s for s in mover.get_schemes if 
-                          s.scheme == loc["scheme"]][0]
-                scheme_type = scheme.scheme
+                server = self.get_server(loc["server"])
+                scheme_config = [s for s in server.schemes_get if
+                                 s.scheme.name == loc["scheme"].upper()][0]
+                scheme = scheme_config.scheme
                 relative_paths = loc["relative_paths"]
-                authorization = loc["authorization"]
+                authorization = loc.get("authorization")
                 media_type = loc["media_type"]
-                resource.add_get_location(mover, scheme_type, relative_paths,
+                resource.add_get_location(server, scheme, relative_paths,
                                           authorization, media_type)
             except IndexError:
-                pass
+                logger.warning("get location uses undefined scheme: {!r}. "
+                               "Ignoring...".format(loc["scheme"]))
         return resource
 
 
@@ -100,6 +199,10 @@ class ConductorCollection(object):
         self.short_name = short_name
         self.name = name if name is not None else short_name
 
+    def __repr__(self):
+        return ("{0}.{1.__class__.__name__}({1.short_name!r}, "
+                "name={1.name!r})".format(__name__, self))
+
 
 class ConductorResource(object):
     """
@@ -108,9 +211,9 @@ class ConductorResource(object):
     A resource has a URN that is used to uniquely identify it. The resource
     may be available at multiple URLs. Each URL is constructed by providing:
 
-    * information on the ConductorMover that can be used to retrieve the 
+    * information on the ConductorServer that can be used to retrieve the
       resource.
-    * the relative URL path where the mover will look for
+    * the relative URL path where the server will look for
     * any query parameters that should be used to build each URL
     * any hash parameters that should be used to build each URL
     """
@@ -159,97 +262,118 @@ class ConductorResource(object):
     def urn(self, urn):
         self._urn = urn
 
-    @property
-    def urls(self):
-        urls = []
-        for p in self._get_locations:
-            try:
-                scheme = [s for s in p["mover"].get_schemes if 
-                          s.scheme == p["scheme_type"]][0]
-            except IndexError:
-                logger.error("Unsupported scheme {} for "
-                             "mover {}".format(p["scheme_type"], p["mover"]))
-                raise
-            url_params = []
-            for relative_path in p["relative_paths"]:
-                query_params = ConductorUrl.extract_query_params(
-                    relative_path)[0]
-                hash_part = ConductorUrl.extract_hash_part(relative_path)[0]
-                if relative_path.startswith("/"):
-                    url_params.append((relative_path, query_params, hash_part))
-                else:
-                    for base_path in scheme.base_paths:
-                        full_path = "/".join((base_path, relative_path))
-                        url_params.append((full_path, query_params, hash_part))
-
-            for path, query_params, hash_part in url_params:
-                url = ConductorUrl(scheme.scheme.name, 
-                                   host_name=p["mover"].domain,
-                                   port_number=scheme.port_number,
-                                   user_name=scheme.user_name,
-                                   user_password=scheme.user_password,
-                                   path_part=path, hash_part=hash_part,
-                                   parent=self, **query_params)
-                urls.append({
-                    "url": url,
-                    "authorization": p["authorization"],
-                    "media_type": p["media_type"],
-                })
-        return urls
-
-    def __init__(self, name, collection, urn, timeslot=None, **properties):
+    def __init__(self, name, urn, collection=None, timeslot=None):
         self.collection = collection
         self._name = name
         self._urn = urn
         self.timeslot = datetime.datetime.now(pytz.utc)
-        for prop, value in properties.iteritems():
-            setattr(self, prop, value)
 
-    def add_get_location(self, mover, scheme, relative_paths, authorization,
+    def __repr__(self):
+        return ("{0}.{1.__class__.__name__}({1.name!r}, {1.urn!r}, "
+                "collection={1.collection!r}, "
+                "timeslot={1.timeslot!r})".format(__name__, self))
+
+    def add_get_location(self, server, scheme, relative_paths, authorization,
                          media_type):
-        loc = {
-            "mover": mover,
-            "scheme_type": scheme,
-            "relative_paths": relative_paths,
-            "authorization": authorization,
-            "media_type": media_type,
-        }
-        self._get_locations.append(loc)
+        if scheme in [config.scheme for config in server.schemes_get]:
+            loc = {
+                "server": server,
+                "scheme": scheme,
+                "relative_paths": relative_paths,
+                "authorization": authorization,
+                "media_type": media_type,
+            }
+            self._get_locations.append(loc)
+        else:
+            logger.error("Unsupported scheme {!r} for server {!r}. "
+                         "Ignoring...".format(scheme["scheme"], server))
+
+    def show_get_parameters(self):
+        get_parameters = []
+        for p in self._get_locations:
+            scheme_config = [s for s in p["server"].schemes_get if
+                             s.scheme == p["scheme"]][0]
+            url_params = []
+            for relative_path in p["relative_paths"]:
+                query_params, dequeried = ConductorUrl.extract_query_params(
+                    relative_path)
+                hash_part = ConductorUrl.extract_hash_part(relative_path)[0]
+                if relative_path.startswith("/"):
+                    url_params.append((dequeried, query_params, hash_part))
+                else:
+                    for base_path in scheme_config.base_paths:
+                        full_path = "/".join((base_path, dequeried))
+                        url_params.append((full_path, query_params, hash_part))
+
+            for path, query_params, hash_part in url_params:
+                url = ConductorUrl(scheme_config.scheme,
+                                   host_name=p["server"].domain,
+                                   port_number=scheme_config.port_number,
+                                   user_name=scheme_config.user_name,
+                                   user_password=scheme_config.user_password,
+                                   path_part=path, hash_part=hash_part,
+                                   parent=self, **query_params)
+                get_parameters.append({
+                    "url": url,
+                    "authorization": p["authorization"],
+                    "media_type": p["media_type"],
+                })
+        return get_parameters
 
 
 class ConductorUrl(object):
 
-    scheme_name = None
+    scheme = None
     user_information = None
     user_name = None
     user_password = None
     host_name = None
     port_number = None
-    path_part = None
-    query_part = None
-    hash_part = None
+    _path_part = None
+    _query_part = None
+    _hash_part = None
+
+    @property
+    def path_part(self):
+        pp = self._path_part if self._path_part else ""
+        return pp.format(self.parent) if self.parent else pp
+
+    @path_part.setter
+    def path_part(self, new_path_part):
+        self._path_part = new_path_part
+
+    @property
+    def query_part(self):
+        qp = self._query_part if self._query_part else ""
+        return qp.format(self.parent) if self.parent else qp
+
+    @query_part.setter
+    def query_part(self, new_query_part):
+        self._query_part = new_query_part
+
+    @property
+    def hash_part(self):
+        hp = self._hash_part if self._hash_part else ""
+        return hp.format(self.parent) if self.parent else hp
+
+    @hash_part.setter
+    def hash_part(self, new_hash_part):
+        self._hash_part = new_hash_part
 
     @property
     def url(self):
-        pp = self.path_part if self.path_part else ""
-        qp = self.query_part if self.query_part else ""
-        hp = self.hash_part if self.hash_part else ""
-        if self.parent is not None:
-            pp = pp.format(self.parent)
-            qp = qp.format(self.parent)
-            hp = hp.format(self.parent)
-        result = u"{}://".format(self.scheme_name)
+        result = u"{}://".format(self.scheme.name.lower())
         if self.user_information != u"":
             result = u"{}{}@".format(result, self.user_information)
         result = u"{}{}".format(result, self.host_name)
         if self.port_number is not None:
             result = u"{}:{}".format(result, self.port_number)
-        if self.path_part is not None:
-            result = u"{}{}".format(result, pp)
+        if self.path_part != u"":
+            result = u"{}{}".format(result, self.path_part)
         if self.query_part != u"":
-            result = u"{}?{}".format(result, qp)
-        if self.hash_part is not None:
-            result = u"{}#{}".format(result, hp)
+            result = u"{}?{}".format(result, self.query_part)
+        if self.hash_part != u"":
+            result = u"{}#{}".format(result, self.hash_part)
         return result
 
     @property
@@ -266,11 +390,15 @@ class ConductorUrl(object):
         q = ["{}={}".format(k, v) for k, v in self.query_params.iteritems()]
         return u"&".join(q)
 
-    def __init__(self, scheme_name, host_name="localhost", port_number=None,
-                 user_name=None, user_password=None, path_part=None, 
-                 hash_part=None, parent=None, **query_params):
-        self.scheme_name = scheme_name
-        self.host_name = host_name
+    def __init__(self, scheme, host_name="localhost", port_number=None,
+                 user_name=None, user_password=None, path_part=u"",
+                 hash_part=u"", parent=None, **query_params):
+        self.scheme = scheme
+        local = socket.gethostname()
+        if host_name == "localhost" or host_name.partition(".")[0] == local:
+            self.host_name = "localhost"
+        else:
+            self.host_name = host_name
         self.port_number = port_number
         self.user_name = user_name
         self.user_password = user_password
@@ -279,11 +407,23 @@ class ConductorUrl(object):
         self.hash_part = hash_part
         self.parent = parent
 
+    def __repr__(self):
+        return ("{0}.{1.__class__.__name__}.from_string("
+                "{1.url!r})".format(__name__,self))
+
+    def __str__(self):
+        return self.url
+
     @classmethod
     def from_string(cls, url):
         hash_part, dehashed = cls.extract_hash_part(url)
         query_params, dequeried = cls.extract_query_params(url)
         scheme_name, sep, scheme_specific = dequeried.partition(":")
+        try:
+            scheme = ConductorScheme.__members__[scheme_name.upper()]
+        except KeyError:
+            logger.error("Invalid scheme: {!r}".format(scheme_name))
+            raise
         if scheme_specific.startswith("//"):
             authority_part, sep, path_part = scheme_specific[2:].partition("/")
             user_info, sep, host_info = authority_part.partition("@")
@@ -299,7 +439,7 @@ class ConductorUrl(object):
             path_part = scheme_specific
         if not path_part.startswith("/"):
             path_part = u"/{}".format(path_part)
-        url = cls(scheme_name, host_name=host_name, port_number=port_number, 
+        url = cls(scheme, host_name=host_name, port_number=port_number,
                   user_name=user_name, user_password=user_password, 
                   path_part=path_part, hash_part=hash_part, **query_params)
         return url
@@ -322,30 +462,39 @@ class ConductorUrl(object):
         return result, dehashed
 
 
-class ConductorMover(object):
+class ConductorServer(object):
     """
-    A mover represents a connection with a server.
+    A ConductorServer represents a connection with a server.
 
     It can GET and POST resource representations according to various schemes.
     Each scheme has some specific traits such as an identifier string, a base 
     path, user identification credentials.
 
-    When a mover is asked for a representation of a resource, it uses the
-    resource's relative_path, query_params, hash together with the information
-    of each of its defined get_schemes in order to construct a URL. It then
-    uses the url in order to contact the host available at the domain and get
-    back a representation of the resource
+    When a ConductorServer is asked for a representation of a resource, it
+    uses the resource's relative_path, query_params, hash together with the
+    information of each of its defined schemes_get in order to construct a
+    URL. It then uses the url in order to contact the host available at the
+    domain and get back a representation of the resource
     """
 
     name = None
     domain = None
-    get_schemes = []
-    post_schemes = []
+    schemes_get = []
+    schemes_post = []
 
-    def __init__(self, name, domain=None, get_schemes=None):
+    def __init__(self, name, domain=None, schemes_get=None):
         self.name = name
         self.domain = domain
-        self.get_schemes = get_schemes if get_schemes is not None else []
+        self.schemes_get = schemes_get if schemes_get is not None else []
+
+    def __repr__(self):
+        return ("{0}.{1.__class__.__name__}({1.name!r}, domain={1.domain!r}, "
+                "schemes_get={1.schemes_get!r})".format(__name__, self))
+
+    def __str__(self):
+        return "{}({}, {}, {})".format(self.__class__.__name__, self.name,
+                                       self.domain,
+                                       [s.scheme for s in self.schemes_get])
 
     def get_representation(self, resource):
         pass
@@ -354,18 +503,7 @@ class ConductorMover(object):
         pass
 
 
-
-class ConductorScheme(enum.Enum):
-    FTP = 1
-    SFTP = 2
-    HTTP = 3
-
-
-class MoverScheme(object):
-
-    FTP = u"ftp"
-    SFTP = u"sftp"
-    HTTP = u"http"
+class ServerScheme(object):
 
     scheme = None
     port_number = None
@@ -374,11 +512,23 @@ class MoverScheme(object):
     base_paths = []
 
     def __init__(self, scheme, base_paths, port_number=None, user_name=None, 
-                 user_password=None, **extra):
-        self.scheme = scheme
-        self.port_number = port_number
-        self.user_name = user_name
-        self.user_password = user_password
-        self.base_paths = base_paths
-        for k, b in extra:
-            setattr(self, k, v)
+                 user_password=None):
+        try:
+            self.scheme = ConductorScheme[scheme.upper()]
+            self.port_number = port_number
+            self.user_name = user_name
+            self.user_password = user_password
+            self.base_paths = base_paths
+        except KeyError as err:
+            logger.error("Invalid scheme: {}".format(scheme))
+            raise
+
+    def __repr__(self):
+        return ("{0}.{1.__class__.__name__}({1.scheme!r}, {1.base_paths!r}, "
+                "port_number={1.port_number!r}, user_name={1.user_name!r}, "
+                "user_password={1.user_password!r})".format(__name__, self))
+
+    def __str__(self):
+        return ("{0.__class__.__name__}({0.scheme}, "
+                "{0.base_paths})".format(self))
+

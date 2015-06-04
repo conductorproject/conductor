@@ -1,70 +1,89 @@
 {
-    "resources": [
+  "resources": [
         {
-            "name": "teste",
-            "collection": "LST",
-            "urn": "copernicus_gl:ipma:{0.collection.short_name}:{0.timeslot_string}",
-            "get_locations": [
-                {
-                    "mover": "server1",
-                    "scheme": "ftp",
-                    "relative_paths": [
-                        "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
-                    ],
-                    "authorization": "scheme_user_information",
-                    "media_type": "HDF5-Copernicus"
-                },
-                {
-                    "mover": "server1",
-                    "scheme": "sftp",
-                    "relative_paths": [
-                        "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
-                    ],
-                    "authorization": "scheme_user_information_authorization",
-                    "media_type": "HDF5-Copernicus"
-                },
-                {
-                    "mover": "server1",
-                    "scheme": "http",
-                    "relative_paths": [
-                        "products/{0.collection.short_name}?timeslot={0.timeslot_string}#resource"
-                    ],
-                    "authorization": "api_key_authorization",
-                    "media_type": "HDF5-Copernicus"
-                }
-            ]
+          "name": "teste",
+          "collection": "LST",
+          "urn": "copernicus_gl:ipma:{0.collection.short_name}:{0.timeslot_string}",
+          "get_locations": [
+            {
+              "server": "geo2",
+              "scheme": "file",
+              "relative_paths": [
+                "fake/path/for/debugging"
+              ],
+              "media_type": "HDF5-Copernicus"
+            },
+            {
+              "server": "geo2",
+              "scheme": "ftp",
+              "relative_paths": [
+                "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}",
+                "another/path/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}",
+                "/now/a/full/path/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
+              ],
+              "authorization": "scheme_user_information",
+              "media_type": "HDF5-Copernicus"
+            },
+            {
+              "server": "geo2",
+              "scheme": "sftp",
+              "relative_paths": [
+                "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
+              ],
+              "authorization": "scheme_user_information_authorization",
+              "media_type": "HDF5-Copernicus"
+            },
+            {
+              "server": "geo2",
+              "scheme": "http",
+              "relative_paths": [
+                "products/{0.collection.short_name}?timeslot={0.timeslot_string}#resource",
+                "new_products/{0.collection.short_name}/{0.timeslot_string}"
+              ],
+              "authorization": "api_key_authorization",
+              "media_type": "HDF5-Copernicus"
+            }
+          ]
         }
-    ],
-    "movers": [
+  ],
+  "servers": [
+    {
+      "name": "geo2",
+      "domain": "geo2.meteo.pt",
+      "schemes": [
         {
-            "name": "server1",
-            "domain": "geo2.ipma.pt",
-            "schemes": [
-                {
-                    "scheme_name": "ftp",
-                    "user_name": "geo2",
-                    "user_password": "geo2123",
-                    "base_paths": [
-                        "/home/geo2/test_data/giosystem/data"
-                    ]
-                },
-                {
-                    "scheme_name": "http",
-                    "port_number": null,
-                    "user_name": "ricardo",
-                    "user_password": "r",
-                    "api_key": "mykey",
-                    "base_paths": [
-                        "/giosystem/files"
-                    ]
-                }
-            ]
-        }
-    ],
-    "collections": [
+          "scheme_name": "file",
+          "base_paths": [
+            "/home/geo2/test_data/giosystem/data",
+            "/another/base/path"
+          ]
+        },
         {
-            "name": "Land Surface Temperature",
-            "short_name": "LST"
+          "scheme_name": "ftp",
+          "user_name": "ricardogsilva",
+          "user_password": "fanta5ma",
+          "base_paths": [
+            "/home/geo2/test_data/giosystem/data",
+            "/another/base/path"
+          ]
+        },
+        {
+          "scheme_name": "http",
+          "port_number": null,
+          "user_name": "ricardo",
+          "user_password": "r",
+          "base_paths": [
+            "/giosystem/files",
+            "/conductor"
+          ]
         }
-    ]
+      ]
+    }
+  ],
+  "collections": [
+    {
+      "name": "Land Surface Temperature",
+      "short_name": "LST"
+    }
+  ]
 }
