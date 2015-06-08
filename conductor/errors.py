@@ -6,6 +6,22 @@ class ConductorError(Exception):
     pass
 
 
+class ResourceNotFoundError(ConductorError):
+    pass
+
+
+class InvalidUserCredentialsError(ConductorError):
+    pass
+
+
+class InvalidSchemeError(ConductorError):
+    pass
+
+
+class HostNotFoundError(ConductorError):
+    pass
+
+
 class InvalidSettingsError(ConductorError):
     pass
 

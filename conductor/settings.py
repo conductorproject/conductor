@@ -14,9 +14,122 @@ import errors
 from timeslotdisplacement import STRATEGY
 from taskrunmode import get_run_mode, RUN_MODE
 
+from conductorresource import ConductorResource, ServerScheme, \
+    ConductorServer, ConductorCollection
+
 logger = logging.getLogger(__name__)
 
+
 class Settings(object):
+
+    settings_source = None
+    _servers = []
+    _collections = []
+    _resources = []
+
+    def __init__(self):
+        self.settings_source = None
+        self._servers = dict()
+        self._collections = dict()
+        self._resources = dict()
+
+    def __repr__(self):
+        return "{0}.{1.__class__.__name__}({1.settings_source!r})".format(
+            __name__, self)
+
+    def available_resources(self):
+        return [r["name"] for r in self._resources]
+
+    def available_collections(self):
+        return [r["short_name"] for r in self._collections]
+
+    def available_servers(self):
+        return [r["name"] for r in self._servers]
+
+    def get_settings(self, url):
+        parsed_url = urlsplit(url)
+        if parsed_url.scheme == "file":
+            self.get_settings_from_file(parsed_url.path)
+            self.settings_source = url
+        else:
+            logger.error("unsupported url scheme: "
+                         "{}".format(parsed_url.scheme))
+
+    def get_settings_from_file(self, path):
+        try:
+            with open(path) as fh:
+                all_settings = json.load(fh)
+                self._servers = all_settings.get("servers", {})
+                self._collections = all_settings.get("collections", {})
+                self._resources = all_settings.get("resources", {})
+        except IOError as e:
+            logger.error(e)
+
+    def get_server(self, name):
+        try:
+            s = [i for i in self._servers if i["name"] == name][0]
+        except IndexError:
+            logger.error("server {} is not defined in the "
+                         "settings".format(name))
+            raise
+        server_get_schemes = []
+        for scheme_settings in s["schemes"]:
+            ss = ServerScheme(
+                scheme_settings["scheme_name"],
+                scheme_settings["base_paths"],
+                port_number=scheme_settings.get("port_number"),
+                user_name=scheme_settings.get("user_name"),
+                user_password=scheme_settings.get("user_password"),
+            )
+            server_get_schemes.append(ss)
+        server = ConductorServer(name, domain=s["domain"],
+                                 schemes_get=server_get_schemes)
+        return server
+
+    def get_collection(self, short_name):
+        try:
+            s = [i for i in self._collections if
+                 i["short_name"] == short_name][0]
+        except IndexError:
+            logger.error("collection {} is not defined in the "
+                         "settings".format(short_name))
+            raise
+        collection = ConductorCollection(short_name, name=s.get("name"))
+        return collection
+
+    def get_resource(self, name, timeslot=None):
+        try:
+            s = [i for i in self._resources if i["name"] == name][0]
+        except IndexError:
+            logger.error("resource {} is not defined in the "
+                         "settings".format(name))
+            raise
+        collection = None
+        if s.get("collection") is not None:
+            collection = self.get_collection(s["collection"])
+        resource = ConductorResource(name, s["urn"], collection=collection,
+                                     timeslot=timeslot)
+        for loc in s["get_locations"]:
+            try:
+                server = self.get_server(loc["server"])
+                scheme_config = [s for s in server.schemes_get if
+                                 s.scheme.name == loc["scheme"].upper()][0]
+                scheme = scheme_config.scheme
+                relative_paths = loc["relative_paths"]
+                authorization = loc.get("authorization")
+                media_type = loc["media_type"]
+                resource.add_get_location(server, scheme, relative_paths,
+                                          authorization, media_type)
+            except IndexError:
+                logger.warning("get location uses undefined scheme: {!r}. "
+                               "Ignoring...".format(loc["scheme"]))
+        return resource
+
+
+settings = Settings()
+
+
+class OldSettings(object):
 
     _package_settings = dict()
     _file_resource_settings = dict()
@@ -86,7 +199,6 @@ class Settings(object):
             mover = self._remote_mover_factory.get_mover(name, protocol,
                                                          **mover_settings)
         return mover
-
 
     def get_processing_task(self, name, timeslot, run_mode=None):
         try:
@@ -164,7 +276,7 @@ class Settings(object):
         return creation_mode, deletion_mode, archiving_mode
 
 
-settings = Settings()
+old_settings = OldSettings()
 
 #    @classmethod
 #    def get_settings(cls, uri):
