@@ -1,6 +1,7 @@
-__author__ = 'geo2'
-
 import enum
+import logging
+
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
 class ConductorScheme(enum.Enum):

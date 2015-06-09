@@ -44,7 +44,7 @@ class ResourceFinder(object):
     the latest LST product without actually running the code.
 
     This class can search the appropriate servers and determine the actual
-    parameters in order to create proper ConductorResource instances.
+    parameters in order to create proper Resource instances.
     """
     pass
 
@@ -114,18 +114,7 @@ class FtpResourceFinder(ResourceFinder):
     pass
 
 
-class ConductorCollection(object):
-
-    def __init__(self, short_name, name=None):
-        self.short_name = short_name
-        self.name = name if name is not None else short_name
-
-    def __repr__(self):
-        return ("{0}.{1.__class__.__name__}({1.short_name!r}, "
-                "name={1.name!r})".format(__name__, self))
-
-
-class ConductorResource(object):
+class Resource(object):
     """
     A resource represents an object that can be retrieved and operated upon.
 
@@ -137,6 +126,8 @@ class ConductorResource(object):
     * the relative URL path where the server will look for
     * any query parameters that should be used to build each URL
     * any hash parameters that should be used to build each URL
+
+    A resource can also be posted to multiple URLs.
     """
 
     _name = u""
@@ -209,6 +200,10 @@ class ConductorResource(object):
             logger.error("Unsupported scheme {!r} for server {!r}. "
                          "Ignoring...".format(scheme["scheme"], server))
 
+    def add_post_location(self, server, scheme, relative_paths, authorization,
+                          media_type):
+        raise NotImplementedError
+
     def show_get_parameters(self):
         get_parameters = []
         for p in self._get_locations:
@@ -241,74 +236,4 @@ class ConductorResource(object):
                 })
         return get_parameters
 
-
-class ConductorServer(object):
-    """
-    A ConductorServer represents a connection with a server.
-
-    It can GET and POST resource representations according to various schemes.
-    Each scheme has some specific traits such as an identifier string, a base 
-    path, user identification credentials.
-
-    When a ConductorServer is asked for a representation of a resource, it
-    uses the resource's relative_path, query_params, hash together with the
-    information of each of its defined schemes_get in order to construct a
-    URL. It then uses the url in order to contact the host available at the
-    domain and get back a representation of the resource
-    """
-
-    name = None
-    domain = None
-    schemes_get = []
-    schemes_post = []
-
-    def __init__(self, name, domain=None, schemes_get=None):
-        self.name = name
-        self.domain = domain
-        self.schemes_get = schemes_get if schemes_get is not None else []
-
-    def __repr__(self):
-        return ("{0}.{1.__class__.__name__}({1.name!r}, domain={1.domain!r}, "
-                "schemes_get={1.schemes_get!r})".format(__name__, self))
-
-    def __str__(self):
-        return "{}({}, {}, {})".format(self.__class__.__name__, self.name,
-                                       self.domain,
-                                       [s.scheme for s in self.schemes_get])
-
-    def get_representation(self, resource):
-        pass
-
-    def post_representation(self, resource):
-        pass
-
-
-class ServerScheme(object):
-
-    scheme = None
-    port_number = None
-    user_name = None
-    user_password = None
-    base_paths = []
-
-    def __init__(self, scheme, base_paths, port_number=None, user_name=None, 
-                 user_password=None):
-        try:
-            self.scheme = ConductorScheme[scheme.upper()]
-            self.port_number = port_number
-            self.user_name = user_name
-            self.user_password = user_password
-            self.base_paths = base_paths
-        except KeyError as err:
-            logger.error("Invalid scheme: {}".format(scheme))
-            raise
-
-    def __repr__(self):
-        return ("{0}.{1.__class__.__name__}({1.scheme!r}, {1.base_paths!r}, "
-                "port_number={1.port_number!r}, user_name={1.user_name!r}, "
-                "user_password={1.user_password!r})".format(__name__, self))
-
-    def __str__(self):
-        return ("{0.__class__.__name__}({0.scheme}, "
-                "{0.base_paths})".format(self))
 

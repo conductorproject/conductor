@@ -43,6 +43,16 @@
               "authorization": "api_key_authorization",
               "media_type": "HDF5-Copernicus"
             }
+          ],
+          "post_locations": [
+            {
+              "server": "geo2",
+              "scheme": "file",
+              "relative_paths": [
+                "fake/path/for"
+              ],
+              "media_type": "HDF5-Copernicus"
+            }
           ]
         }
   ],

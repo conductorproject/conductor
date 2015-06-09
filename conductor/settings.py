@@ -14,8 +14,9 @@ import errors
 from timeslotdisplacement import STRATEGY
 from taskrunmode import get_run_mode, RUN_MODE
 
-from conductorresource import ConductorResource, ServerScheme, \
-    ConductorServer, ConductorCollection
+import conductor.resource
+import conductor.server
+import conductor.collection
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class Settings(object):
             raise
         server_get_schemes = []
         for scheme_settings in s["schemes"]:
-            ss = ServerScheme(
+            ss = conductor.server.ServerScheme(
                 scheme_settings["scheme_name"],
                 scheme_settings["base_paths"],
                 port_number=scheme_settings.get("port_number"),
@@ -82,8 +83,8 @@ class Settings(object):
                 user_password=scheme_settings.get("user_password"),
             )
             server_get_schemes.append(ss)
-        server = ConductorServer(name, domain=s["domain"],
-                                 schemes_get=server_get_schemes)
+        server = conductor.server.Server(name, domain=s["domain"],
+                                         schemes_get=server_get_schemes)
         return server
 
     def get_collection(self, short_name):
@@ -94,7 +95,8 @@ class Settings(object):
             logger.error("collection {} is not defined in the "
                          "settings".format(short_name))
             raise
-        collection = ConductorCollection(short_name, name=s.get("name"))
+        collection = conductor.collection.Collection(short_name,
+                                                     name=s.get("name"))
         return collection
 
     def get_resource(self, name, timeslot=None):
@@ -107,8 +109,9 @@ class Settings(object):
         collection = None
         if s.get("collection") is not None:
             collection = self.get_collection(s["collection"])
-        resource = ConductorResource(name, s["urn"], collection=collection,
-                                     timeslot=timeslot)
+        resource = conductor.resource.Resource(name, s["urn"],
+                                               collection=collection,
+                                               timeslot=timeslot)
         for loc in s["get_locations"]:
             try:
                 server = self.get_server(loc["server"])
