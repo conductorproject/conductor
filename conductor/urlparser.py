@@ -108,7 +108,10 @@ class Url(object):
     def from_string(cls, url):
         hash_part, dehashed = cls.extract_hash_part(url)
         query_params, dequeried = cls.extract_query_params(url)
-        scheme_name, sep, scheme_specific = dequeried.rpartition(":")
+        scheme_name, sep, scheme_specific = dequeried.partition(":")
+        if scheme_specific == "":
+            scheme_specific = scheme_name
+            scheme_name = "file"
         if scheme_name == "":
             scheme_name = ConductorScheme.FILE.name
         try:

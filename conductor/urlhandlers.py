@@ -27,6 +27,8 @@ class UrlHandlerFactory(object):
         result = {
             ConductorScheme.FILE: FileUrlHandler,
             ConductorScheme.FTP: FtpUrlHandler,
+            ConductorScheme.SFTP: SftpUrlHandler,
+            ConductorScheme.HTTP: HttpUrlHandler,
         }.get(scheme)
         return result()
 
@@ -47,7 +49,7 @@ class BaseUrlHandler(object):
 
 class FileUrlHandler(BaseUrlHandler):
 
-    def get_url(self, url, destination_directory):
+    def get_from_url(self, url, destination_directory):
         """
         Get the representation of the resource available at the input URL
 
@@ -61,7 +63,7 @@ class FileUrlHandler(BaseUrlHandler):
         :return: The full path to the representation that was retrieved
             from the input URL
         :rtype: str
-        :raises: `conductor.errors.ResourceNotFoundError`
+        :raises: conductor.errors.ResourceNotFoundError
         """
 
         self.create_local_directory(destination_directory)
@@ -74,10 +76,37 @@ class FileUrlHandler(BaseUrlHandler):
             raise conductor.errors.ResourceNotFoundError(err.args)
         return destination
 
+    def post_to_url(self, url, path):
+        """
+        Send a file to the input URL.
+
+        The input URL is expected to use the FILE scheme and its path_part
+        must end with the directory where the path will be copied into.
+
+        :param url:
+        :param path:
+        :return:
+        """
+
+        destination = os.path.join(url.path_part, os.path.basename(path))
+        try:
+            if not os.path.isdir(url.path_part):
+                os.makedirs(url.path_part)
+            shutil.copyfile(path, destination)
+        except (OSError, IOError) as err:
+            err_no, msg = err.args
+            if err_no == 2:
+                raise conductor.errors.LocalPathNotFoundError(msg)
+            elif err_no == 13:
+                raise conductor.errors.ResourceNotFoundError(msg)
+            else:
+                raise
+        return destination
+
 
 class FtpUrlHandler(BaseUrlHandler):
 
-    def get_url(self, url, destination_directory):
+    def get_from_url(self, url, destination_directory):
         """
         Get the representation of the resource available at the input URL
 
@@ -91,7 +120,9 @@ class FtpUrlHandler(BaseUrlHandler):
         :return: The full path to the representation that was retrieved
             from the input URL
         :rtype: str
-        :raises: `conductor.errors.ResourceNotFoundError`
+        :raises: conductor.errors.ResourceNotFoundError,
+            conductor.errors.InvalidUserCredentialsError,
+            conductor.errors.HostNotFoundError
         """
 
         self.create_local_directory(destination_directory)
@@ -102,11 +133,12 @@ class FtpUrlHandler(BaseUrlHandler):
             with FTPHost(url.host_name, url.user_name, url.user_password) as h:
                 h.download(url.path_part, destination)
         except ftputil.error.PermanentError as err:
-            error_code, sep, msg = err.args[0].partition(" ")
-            if int(error_code) == 530:
+            if err.errno == 530:
                 raise conductor.errors.InvalidUserCredentialsError(err.args)
-            elif int(error_code) == 550:
+            elif err.errno == 550:
                 raise conductor.errors.ResourceNotFoundError(err.args)
+            else:
+                raise
         except ftputil.error.FTPOSError as err:
             code, msg = err.args
             if code == -2:
@@ -115,3 +147,35 @@ class FtpUrlHandler(BaseUrlHandler):
                 raise conductor.errors.HostNotFoundError(
                     "Server {} not found".format(url.host_name))
             raise
+        except ftputil.error.FTPIOError as err:
+            raise conductor.errors.ResourceNotFoundError(err.args)
+        return destination
+
+    def post_to_url(self, url, path):
+        destination = os.path.join(url.path_part, os.path.basename(path))
+        try:
+            with FTPHost(url.host_name, url.user_name, url.user_password) as h:
+                destination_dir = os.path.dirname(destination)
+                if not h.path.isdir(destination_dir):
+                    h.makedirs(destination_dir)
+                h.upload(path, destination)
+        except ftputil.error.FTPIOError as err:
+            raise conductor.errors.ResourceNotFoundError(err.args)
+        except ftputil.error.PermanentError as err:
+            if err.errno == 550:
+                raise conductor.errors.ResourceNotFoundError(err.args)
+            else:
+                raise
+        except IOError as err:
+            err_no, msg = err.args
+            if err_no == 2:
+                raise conductor.errors.LocalPathNotFoundError(msg)
+        return destination
+
+
+class SftpUrlHandler(BaseUrlHandler):
+    pass
+
+
+class HttpUrlHandler(BaseUrlHandler):
+    pass

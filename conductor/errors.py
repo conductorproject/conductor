@@ -10,6 +10,10 @@ class ResourceNotFoundError(ConductorError):
     pass
 
 
+class LocalPathNotFoundError(ConductorError):
+    pass
+
+
 class InvalidUserCredentialsError(ConductorError):
     pass
 
