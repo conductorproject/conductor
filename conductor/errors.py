@@ -6,6 +6,22 @@ class ConductorError(Exception):
     pass
 
 
+class ResourceNotDefinedError(ConductorError):
+    pass
+
+
+class CollectionNotDefinedError(ConductorError):
+    pass
+
+
+class ServerNotDefinedError(ConductorError):
+    pass
+
+
+class ResourceNotDefinedError(ConductorError):
+    pass
+
+
 class ResourceNotFoundError(ConductorError):
     pass
 
@@ -19,6 +35,10 @@ class InvalidUserCredentialsError(ConductorError):
 
 
 class InvalidSchemeError(ConductorError):
+    pass
+
+
+class InvalidMoverMethodError(ConductorError):
     pass
 
 

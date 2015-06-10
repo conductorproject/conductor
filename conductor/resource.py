@@ -1,10 +1,5 @@
 """
 Resource class for conductor
-
-
-
-
-
 """
 
 import re
@@ -14,8 +9,9 @@ import pytz
 import datetime
 import dateutil.parser
 
-from urlparser import Url
-from conductor import ConductorScheme
+from .urlparser import Url
+from . import ConductorScheme
+from . import errors
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +130,7 @@ class Resource(object):
     _urn = u""
     _timeslot = None
     _get_locations = []
+    _post_locations = []
 
     @property
     def timeslot(self):
@@ -179,6 +176,8 @@ class Resource(object):
         self._name = name
         self._urn = urn
         self.timeslot = datetime.datetime.now(pytz.utc)
+        self._get_locations = []
+        self._post_locations = []
 
     def __repr__(self):
         return ("{0}.{1.__class__.__name__}({1.name!r}, {1.urn!r}, "
@@ -198,15 +197,41 @@ class Resource(object):
             self._get_locations.append(loc)
         else:
             logger.error("Unsupported scheme {!r} for server {!r}. "
-                         "Ignoring...".format(scheme["scheme"], server))
+                         "Ignoring...".format(scheme, server))
 
     def add_post_location(self, server, scheme, relative_paths, authorization,
                           media_type):
-        raise NotImplementedError
+        if scheme in [config.scheme for config in server.schemes_post]:
+            loc = {
+                "server": server,
+                "scheme": scheme,
+                "relative_paths": relative_paths,
+                "authorization": authorization,
+                "media_type": media_type,
+            }
+            self._post_locations.append(loc)
+        else:
+            raise errors.InvalidSchemeError("Unsupported scheme {} for server "
+                                            "{}. Ignoring...".format(scheme, 
+                                                                     server))
 
     def show_get_parameters(self):
-        get_parameters = []
-        for p in self._get_locations:
+        return self._show_mover_method_parameters(mover_method="GET")
+
+    def show_post_parameters(self):
+        return self._show_mover_method_parameters(mover_method="POST")
+
+    def _show_mover_method_parameters(self, mover_method=None):
+        try:
+            attr = {
+                "GET": self._get_locations,
+                "POST": self._post_locations,
+            }.get(mover_method.upper())
+        except AttributeError:
+            raise errors.InvalidMoverMethodError(
+                "Invalid mover method {}".format(mover_method))
+        method_parameters = []
+        for p in attr:
             scheme_config = [s for s in p["server"].schemes_get if
                              s.scheme == p["scheme"]][0]
             url_params = []
@@ -229,11 +254,9 @@ class Resource(object):
                                    user_password=scheme_config.user_password,
                                    path_part=path, hash_part=hash_part,
                                    parent=self, **query_params)
-                get_parameters.append({
+                method_parameters.append({
                     "url": url,
                     "authorization": p["authorization"],
                     "media_type": p["media_type"],
                 })
-        return get_parameters
-
-
+        return method_parameters

@@ -29,10 +29,11 @@ class Server(object):
     schemes_get = []
     schemes_post = []
 
-    def __init__(self, name, domain=None, schemes_get=None):
+    def __init__(self, name, domain=None, schemes_get=None, schemes_post=None):
         self.name = name
         self.domain = domain
         self.schemes_get = schemes_get if schemes_get is not None else []
+        self.schemes_post = schemes_post if schemes_post is not None else []
 
     def __repr__(self):
         return ("{0}.{1.__class__.__name__}({1.name!r}, domain={1.domain!r}, "

@@ -14,9 +14,11 @@ import errors
 from timeslotdisplacement import STRATEGY
 from taskrunmode import get_run_mode, RUN_MODE
 
-import conductor.resource
-import conductor.server
-import conductor.collection
+from . import resource
+from . import server
+from . import collection
+from . import ServerSchemeMethod
+from . import errors
 
 logger = logging.getLogger(__name__)
 
@@ -72,47 +74,61 @@ class Settings(object):
         except IndexError:
             logger.error("server {} is not defined in the "
                          "settings".format(name))
-            raise
+            raise errors.ServerNotDefinedError(
+                "server {!r} is not defined in the settings".format(name))
         server_get_schemes = []
+        server_post_schemes = []
         for scheme_settings in s["schemes"]:
-            ss = conductor.server.ServerScheme(
+            ss = server.ServerScheme(
                 scheme_settings["scheme_name"],
                 scheme_settings["base_paths"],
                 port_number=scheme_settings.get("port_number"),
                 user_name=scheme_settings.get("user_name"),
                 user_password=scheme_settings.get("user_password"),
             )
-            server_get_schemes.append(ss)
-        server = conductor.server.Server(name, domain=s["domain"],
-                                         schemes_get=server_get_schemes)
-        return server
+            sm = ServerSchemeMethod[scheme_settings["method"].upper()]
+            if sm == ServerSchemeMethod.GET:
+                server_get_schemes.append(ss)
+            elif sm == ServerSchemeMethod.POST:
+                server_post_schemes.append(ss)
+        instance = server.Server(name, domain=s["domain"],
+                               schemes_get=server_get_schemes,
+                               schemes_post=server_post_schemes)
+        return instance
 
     def get_collection(self, short_name):
         try:
             s = [i for i in self._collections if
                  i["short_name"] == short_name][0]
         except IndexError:
-            logger.error("collection {} is not defined in the "
-                         "settings".format(short_name))
-            raise
-        collection = conductor.collection.Collection(short_name,
-                                                     name=s.get("name"))
-        return collection
+            raise errors.CollectionNotDefinedError("collection {!r} is not "
+                                                   "defined in the "
+                                                   "settings".format(
+                                                       short_name))
+        return collection.Collection(short_name, name=s.get("name"))
 
     def get_resource(self, name, timeslot=None):
         try:
             s = [i for i in self._resources if i["name"] == name][0]
         except IndexError:
-            logger.error("resource {} is not defined in the "
-                         "settings".format(name))
-            raise
+            raise errors.ResourceNotDefinedError(
+                    "resource {!r} is not defined in the settings".format(name))
         collection = None
         if s.get("collection") is not None:
             collection = self.get_collection(s["collection"])
-        resource = conductor.resource.Resource(name, s["urn"],
-                                               collection=collection,
-                                               timeslot=timeslot)
-        for loc in s["get_locations"]:
+        r = resource.Resource(name, s["urn"], collection=collection,
+                                     timeslot=timeslot)
+        get_locations = self._parse_resource_locations(s["get_locations"])
+        post_locations = self._parse_resource_locations(s["post_locations"])
+        for loc in get_locations:
+            r.add_get_location(*loc)
+        for loc in post_locations:
+            r.add_post_location(*loc)
+        return r
+
+    def _parse_resource_locations(self, locations):
+        result = []
+        for loc in locations:
             try:
                 server = self.get_server(loc["server"])
                 scheme_config = [s for s in server.schemes_get if
@@ -121,12 +137,13 @@ class Settings(object):
                 relative_paths = loc["relative_paths"]
                 authorization = loc.get("authorization")
                 media_type = loc["media_type"]
-                resource.add_get_location(server, scheme, relative_paths,
-                                          authorization, media_type)
+                result.append(
+                    (server, scheme, relative_paths, authorization, media_type)
+                )
             except IndexError:
                 logger.warning("get location uses undefined scheme: {!r}. "
                                "Ignoring...".format(loc["scheme"]))
-        return resource
+        return result
 
 
 settings = Settings()
