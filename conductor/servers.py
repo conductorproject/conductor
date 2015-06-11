@@ -3,10 +3,50 @@ Server classes for conductor
 """
 
 import logging
+from socket import gethostname
 
-from conductor import ConductorScheme
+from . import ConductorScheme
+from . import ServerSchemeMethod
+from . import errors
+from .settings import settings
+from .urlhandlers import url_handler_factory
 
 logger = logging.getLogger(__name__)
+
+
+class ServerFactory(object):
+
+    def get_server(self, name=None):
+        name = name if name is not None else gethostname()
+        try:
+            s = [i for i in settings.servers if i["name"] == name][0]
+        except IndexError:
+            logger.error("server {} is not defined in the settings".format(
+                name))
+            raise errors.ServerNotDefinedError(
+                "server {!r} is not defined in the settings".format(name))
+        server_get_schemes = []
+        server_post_schemes = []
+        for scheme_settings in s["schemes"]:
+            ss = ServerScheme(
+                scheme_settings["scheme_name"],
+                scheme_settings["base_paths"],
+                port_number=scheme_settings.get("port_number"),
+                user_name=scheme_settings.get("user_name"),
+                user_password=scheme_settings.get("user_password"),
+            )
+            sm = ServerSchemeMethod[scheme_settings["method"].upper()]
+            if sm == ServerSchemeMethod.GET:
+                server_get_schemes.append(ss)
+            elif sm == ServerSchemeMethod.POST:
+                server_post_schemes.append(ss)
+        instance = Server(name, domain=s["domain"],
+                          schemes_get=server_get_schemes,
+                          schemes_post=server_post_schemes)
+        return instance
+
+
+server_factory = ServerFactory()
 
 
 class Server(object):
@@ -43,12 +83,6 @@ class Server(object):
         return "{}({}, {}, {})".format(self.__class__.__name__, self.name,
                                        self.domain,
                                        [s.scheme for s in self.schemes_get])
-
-    def get_representation(self, resource):
-        pass
-
-    def post_representation(self, resource):
-        pass
 
 
 class ServerScheme(object):

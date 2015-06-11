@@ -12,6 +12,10 @@ import dateutil.parser
 from .urlparser import Url
 from . import ConductorScheme
 from . import errors
+from .servers import server_factory
+from .collections import collection_factory
+from .settings import settings
+from .urlhandlers import url_handler_factory
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ logger = logging.getLogger(__name__)
 class ResourceFinderFactory(object):
 
     @staticmethod
-    def get_finder(self, scheme):
+    def get_finder(scheme):
         result = {
             ConductorScheme.FILE: FileResourceFinder,
             ConductorScheme.FTP: FtpResourceFinder,
@@ -29,7 +33,7 @@ class ResourceFinderFactory(object):
 resource_finder_factory = ResourceFinderFactory()
 
 
-class ResourceFinder(object):
+class BaseResourceFinder(object):
     """
     Look for Conductor resources
 
@@ -45,7 +49,7 @@ class ResourceFinder(object):
     pass
 
 
-class FileResourceFinder(ResourceFinder):
+class FileResourceFinder(BaseResourceFinder):
 
     @staticmethod
     def select_path(full_path_pattern, selection_method="latest",
@@ -106,8 +110,51 @@ class FileResourceFinder(ResourceFinder):
         return current_path
 
 
-class FtpResourceFinder(ResourceFinder):
+class FtpResourceFinder(BaseResourceFinder):
     pass
+
+
+class ResourceFactory(object):
+
+    def get_resource(self, name, timeslot=None):
+        try:
+            s = [i for i in settings.resources if i["name"] == name][0]
+        except IndexError:
+            raise errors.ResourceNotDefinedError(
+                "resource {!r} is not defined in the settings".format(name))
+        collection = None
+        if s.get("collection") is not None:
+            collection = collection_factory.get_collection(s["collection"])
+        r = Resource(name, s["urn"], collection=collection, timeslot=timeslot)
+        get_locations = self._parse_resource_locations(s["get_locations"])
+        post_locations = self._parse_resource_locations(s["post_locations"])
+        for loc in get_locations:
+            r.add_get_location(*loc)
+        for loc in post_locations:
+            r.add_post_location(*loc)
+        return r
+
+    def _parse_resource_locations(self, locations):
+        result = []
+        for loc in locations:
+            try:
+                server = server_factory.get_server(loc["server"])
+                scheme_config = [s for s in server.schemes_get if
+                                 s.scheme.name == loc["scheme"].upper()][0]
+                scheme = scheme_config.scheme
+                relative_paths = loc["relative_paths"]
+                authorization = loc.get("authorization")
+                media_type = loc["media_type"]
+                result.append(
+                    (server, scheme, relative_paths, authorization, media_type)
+                )
+            except IndexError:
+                logger.warning("get location uses undefined scheme: {!r}. "
+                               "Ignoring...".format(loc["scheme"]))
+        return result
+
+
+resource_factory = ResourceFactory()
 
 
 class Resource(object):
@@ -175,7 +222,8 @@ class Resource(object):
         self.collection = collection
         self._name = name
         self._urn = urn
-        self.timeslot = datetime.datetime.now(pytz.utc)
+        self.timeslot = (timeslot if timeslot is not None
+                         else datetime.datetime.now(pytz.utc))
         self._get_locations = []
         self._post_locations = []
 
@@ -183,6 +231,9 @@ class Resource(object):
         return ("{0}.{1.__class__.__name__}({1.name!r}, {1.urn!r}, "
                 "collection={1.collection!r}, "
                 "timeslot={1.timeslot!r})".format(__name__, self))
+
+    def __str__(self):
+        return self.urn
 
     def add_get_location(self, server, scheme, relative_paths, authorization,
                          media_type):
@@ -260,3 +311,46 @@ class Resource(object):
                     "media_type": p["media_type"],
                 })
         return method_parameters
+
+    def get_representation(self, destination_directory):
+        """
+        Get a resource's representation.
+
+        This method iterates through all of the available get_parameters for
+        a resource and tries to fetch the resource's representation using
+        the URLs defined in each get_parameter. It stops at the first
+        successful URL retrieval.
+
+        :param resource:
+        :param destination_directory:
+        :return:
+        """
+
+        representation = None
+        get_params = self.show_get_parameters()
+        i = 0
+        while i < len(get_params) and representation is None:
+            p = get_params[i]
+            logger.debug("Trying URL: {}".format(p["url"].url))
+            handler = url_handler_factory.get_handler(p["url"].scheme)
+            try:
+                representation = handler.get_from_url(p["url"],
+                                                      destination_directory)
+                logger.debug("found resource")
+            except errors.ResourceNotFoundError:
+                logger.debug("did not find resource")
+            i += 1
+        return representation
+
+    def post_representation(self, representation, post_to=None):
+        """
+        Post the input representation.
+
+        This method sends the input representation to the servers defined in
+        the instance's
+        :param representation:
+        :param post_to:
+        :return:
+        """
+
+        raise NotImplementedError

@@ -9,9 +9,10 @@
               "server": "geo2",
               "scheme": "file",
               "relative_paths": [
+                "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.timeslot.hour:02d}/g2_BIOPAR_{0.collection.short_name}_{0.timeslot_string}_AFRI_GEO_v1.bz2",
                 "fake/path/for/debugging"
               ],
-              "media_type": "HDF5-Copernicus"
+              "media_type": "HDF5-Copernicus+bzip2"
             },
             {
               "server": "geo2",

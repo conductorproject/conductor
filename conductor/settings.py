@@ -10,14 +10,9 @@ from socket import gethostname
 import fileresource
 import resourcemover
 import processingtask
-import errors
 from timeslotdisplacement import STRATEGY
 from taskrunmode import get_run_mode, RUN_MODE
 
-from . import resource
-from . import server
-from . import collection
-from . import ServerSchemeMethod
 from . import errors
 
 logger = logging.getLogger(__name__)
@@ -26,28 +21,28 @@ logger = logging.getLogger(__name__)
 class Settings(object):
 
     settings_source = None
-    _servers = []
-    _collections = []
-    _resources = []
+    servers = []
+    collections = []
+    resources = []
 
     def __init__(self):
         self.settings_source = None
-        self._servers = dict()
-        self._collections = dict()
-        self._resources = dict()
+        self.servers = []
+        self.collections = []
+        self.resources = []
 
     def __repr__(self):
         return "{0}.{1.__class__.__name__}({1.settings_source!r})".format(
             __name__, self)
 
     def available_resources(self):
-        return [r["name"] for r in self._resources]
+        return [r["name"] for r in self.resources]
 
     def available_collections(self):
-        return [r["short_name"] for r in self._collections]
+        return [r["short_name"] for r in self.collections]
 
     def available_servers(self):
-        return [r["name"] for r in self._servers]
+        return [r["name"] for r in self.servers]
 
     def get_settings(self, url):
         parsed_url = urlsplit(url)
@@ -62,88 +57,11 @@ class Settings(object):
         try:
             with open(path) as fh:
                 all_settings = json.load(fh)
-                self._servers = all_settings.get("servers", {})
-                self._collections = all_settings.get("collections", {})
-                self._resources = all_settings.get("resources", {})
+                self.servers = all_settings.get("servers", [])
+                self.collections = all_settings.get("collections", [])
+                self.resources = all_settings.get("resources", [])
         except IOError as e:
             logger.error(e)
-
-    def get_server(self, name):
-        try:
-            s = [i for i in self._servers if i["name"] == name][0]
-        except IndexError:
-            logger.error("server {} is not defined in the "
-                         "settings".format(name))
-            raise errors.ServerNotDefinedError(
-                "server {!r} is not defined in the settings".format(name))
-        server_get_schemes = []
-        server_post_schemes = []
-        for scheme_settings in s["schemes"]:
-            ss = server.ServerScheme(
-                scheme_settings["scheme_name"],
-                scheme_settings["base_paths"],
-                port_number=scheme_settings.get("port_number"),
-                user_name=scheme_settings.get("user_name"),
-                user_password=scheme_settings.get("user_password"),
-            )
-            sm = ServerSchemeMethod[scheme_settings["method"].upper()]
-            if sm == ServerSchemeMethod.GET:
-                server_get_schemes.append(ss)
-            elif sm == ServerSchemeMethod.POST:
-                server_post_schemes.append(ss)
-        instance = server.Server(name, domain=s["domain"],
-                               schemes_get=server_get_schemes,
-                               schemes_post=server_post_schemes)
-        return instance
-
-    def get_collection(self, short_name):
-        try:
-            s = [i for i in self._collections if
-                 i["short_name"] == short_name][0]
-        except IndexError:
-            raise errors.CollectionNotDefinedError("collection {!r} is not "
-                                                   "defined in the "
-                                                   "settings".format(
-                                                       short_name))
-        return collection.Collection(short_name, name=s.get("name"))
-
-    def get_resource(self, name, timeslot=None):
-        try:
-            s = [i for i in self._resources if i["name"] == name][0]
-        except IndexError:
-            raise errors.ResourceNotDefinedError(
-                    "resource {!r} is not defined in the settings".format(name))
-        collection = None
-        if s.get("collection") is not None:
-            collection = self.get_collection(s["collection"])
-        r = resource.Resource(name, s["urn"], collection=collection,
-                                     timeslot=timeslot)
-        get_locations = self._parse_resource_locations(s["get_locations"])
-        post_locations = self._parse_resource_locations(s["post_locations"])
-        for loc in get_locations:
-            r.add_get_location(*loc)
-        for loc in post_locations:
-            r.add_post_location(*loc)
-        return r
-
-    def _parse_resource_locations(self, locations):
-        result = []
-        for loc in locations:
-            try:
-                server = self.get_server(loc["server"])
-                scheme_config = [s for s in server.schemes_get if
-                                 s.scheme.name == loc["scheme"].upper()][0]
-                scheme = scheme_config.scheme
-                relative_paths = loc["relative_paths"]
-                authorization = loc.get("authorization")
-                media_type = loc["media_type"]
-                result.append(
-                    (server, scheme, relative_paths, authorization, media_type)
-                )
-            except IndexError:
-                logger.warning("get location uses undefined scheme: {!r}. "
-                               "Ignoring...".format(loc["scheme"]))
-        return result
 
 
 settings = Settings()
