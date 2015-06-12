@@ -11,6 +11,7 @@ import dateutil.parser
 
 from .urlparser import Url
 from . import ConductorScheme
+from . import ServerSchemeMethod
 from . import errors
 from .servers import server_factory
 from .collections import collection_factory
@@ -125,21 +126,27 @@ class ResourceFactory(object):
         collection = None
         if s.get("collection") is not None:
             collection = collection_factory.get_collection(s["collection"])
-        r = Resource(name, s["urn"], collection=collection, timeslot=timeslot)
-        get_locations = self._parse_resource_locations(s["get_locations"])
-        post_locations = self._parse_resource_locations(s["post_locations"])
-        for loc in get_locations:
-            r.add_get_location(*loc)
-        for loc in post_locations:
-            r.add_post_location(*loc)
+        r = Resource(name, s["urn"], s["local_pattern"], collection=collection,
+                     timeslot=timeslot)
+        for loc_get in self._parse_resource_locations(
+                s["get_locations"], ServerSchemeMethod.GET):
+            r.add_get_location(*loc_get)
+        for loc_post in self._parse_resource_locations(
+                s["post_locations"], ServerSchemeMethod.POST):
+            r.add_post_location(*loc_post)
         return r
 
-    def _parse_resource_locations(self, locations):
+    @staticmethod
+    def _parse_resource_locations(locations, mover_method):
         result = []
         for loc in locations:
             try:
                 server = server_factory.get_server(loc["server"])
-                scheme_config = [s for s in server.schemes_get if
+                schemes_to_check = {
+                    ServerSchemeMethod.GET: server.schemes_get,
+                    ServerSchemeMethod.POST: server.schemes_post,
+                }[mover_method]
+                scheme_config = [s for s in schemes_to_check if
                                  s.scheme.name == loc["scheme"].upper()][0]
                 scheme = scheme_config.scheme
                 relative_paths = loc["relative_paths"]
@@ -178,6 +185,7 @@ class Resource(object):
     _timeslot = None
     _get_locations = []
     _post_locations = []
+    _local_pattern = u""
 
     @property
     def timeslot(self):
@@ -190,7 +198,7 @@ class Resource(object):
         else:
             try:
                 self._timeslot = dateutil.parser.parse(ts)
-            except AttributeError as err:
+            except AttributeError:
                 logger.error("invalid value for timeslot: {}".format(ts))
                 raise
 
@@ -200,6 +208,22 @@ class Resource(object):
             result = self.timeslot.strftime("%Y%m%d%H%M")
         else:
             result = ""
+        return result
+
+    @property
+    def dekade(self):
+        result = None
+        if self.timeslot is not None:
+            day = self.timeslot.day
+            result = 1 if day < 11 else (2 if day < 21 else 3)
+        return result
+
+    @property
+    def year_day(self):
+        if self.timeslot is not None:
+            result = self.timeslot.timetuple().tm_yday
+        else:
+            result = None
         return result
 
     @property
@@ -218,10 +242,20 @@ class Resource(object):
     def urn(self, urn):
         self._urn = urn
 
-    def __init__(self, name, urn, collection=None, timeslot=None):
+    @property
+    def local_pattern(self):
+        return self._local_pattern.format(self)
+
+    @local_pattern.setter
+    def local_pattern(self, pattern):
+        self._local_pattern = pattern
+
+    def __init__(self, name, urn, local_pattern, collection=None,
+                 timeslot=None):
         self.collection = collection
         self._name = name
         self._urn = urn
+        self._local_pattern = local_pattern
         self.timeslot = (timeslot if timeslot is not None
                          else datetime.datetime.now(pytz.utc))
         self._get_locations = []
@@ -267,23 +301,27 @@ class Resource(object):
                                                                      server))
 
     def show_get_parameters(self):
-        return self._show_mover_method_parameters(mover_method="GET")
+        return self._show_mover_method_parameters(ServerSchemeMethod.GET)
 
     def show_post_parameters(self):
-        return self._show_mover_method_parameters(mover_method="POST")
+        return self._show_mover_method_parameters(ServerSchemeMethod.POST)
 
-    def _show_mover_method_parameters(self, mover_method=None):
+    def _show_mover_method_parameters(self, mover_method):
         try:
             attr = {
-                "GET": self._get_locations,
-                "POST": self._post_locations,
-            }.get(mover_method.upper())
-        except AttributeError:
+                ServerSchemeMethod.GET: self._get_locations,
+                ServerSchemeMethod.POST: self._post_locations,
+            }[mover_method]
+        except KeyError:
             raise errors.InvalidMoverMethodError(
                 "Invalid mover method {}".format(mover_method))
         method_parameters = []
         for p in attr:
-            scheme_config = [s for s in p["server"].schemes_get if
+            scheme_type = {
+                ServerSchemeMethod.GET: p["server"].schemes_get,
+                ServerSchemeMethod.POST: p["server"].schemes_post,
+            }[mover_method]
+            scheme_config = [s for s in scheme_type if
                              s.scheme == p["scheme"]][0]
             url_params = []
             for relative_path in p["relative_paths"]:
@@ -320,10 +358,6 @@ class Resource(object):
         a resource and tries to fetch the resource's representation using
         the URLs defined in each get_parameter. It stops at the first
         successful URL retrieval.
-
-        :param resource:
-        :param destination_directory:
-        :return:
         """
 
         representation = None
@@ -353,4 +387,32 @@ class Resource(object):
         :return:
         """
 
-        raise NotImplementedError
+        post_to = post_to if post_to else self.show_post_parameters()
+        posted_to = []
+        for p in post_to:
+            handler = url_handler_factory.get_handler(p["url"].scheme)
+            logger.debug("Posting to: {}".format(p["url"].url))
+            try:
+                posted_to.append(handler.post_to_url(p["url"], representation))
+            except (errors.ResourceNotFoundError,
+                    errors.LocalPathNotFoundError):
+                logger.error("Could not post to {}".format(p["url"].url))
+        return posted_to
+
+    def find_local(self, path):
+        """
+        Find the file that matches this resource in the local filesystem.
+
+        :param path:
+        :return:
+        """
+
+        result = None
+        if (os.path.isfile(path) and re.search(self.local_pattern, path)):
+            result = path
+        elif os.path.isdir(path):
+            for i in os.listdir(path):
+                i_path = os.path.join(path, i)
+                if os.path.isfile(i_path) and re.search(self.local_pattern, i):
+                    result = i_path
+        return result

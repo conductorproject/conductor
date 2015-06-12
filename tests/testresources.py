@@ -8,9 +8,11 @@ import pytz
 from nose import tools
 import mock
 
-from conductor import ConductorScheme
 import conductor.resources
 import conductor.collections
+from conductor import ConductorScheme
+from conductor.settings import settings
+from conductor import errors
 
 class TestResourceFinderFactory(object):
 
@@ -25,6 +27,28 @@ class TestResourceFinderFactory(object):
                                      conductor.resources.BaseResourceFinder)
 
 
+class TestResourceFactory(object):
+
+    @mock.patch("conductor.resources.Resource", autospec=True)
+    def test_get_resource(self, mock_resource):
+        """The Resource factory is able to create new Resource instances"""
+
+        valid_name = "fake_valid_name"
+        settings.resources = [
+            {
+                "name": valid_name,
+                "urn": "fake:urn:stuff",
+                "local_pattern": "fake_local_pattern",
+                "get_locations": [],
+                "post_locations": [],
+            }
+        ]
+        factory = conductor.resources.resource_factory
+        factory.get_resource(valid_name)
+        tools.assert_true(mock_resource.called)
+        tools.assert_raises(errors.ResourceNotDefinedError,
+                            factory.get_resource, "invalid_name")
+
 class TestResource(object):
 
     @classmethod
@@ -32,12 +56,14 @@ class TestResource(object):
         cls.resource_name = "fake name"
         cls.resource_urn = ("urn:fake:{0.collection.short_name}:"
                             "{0.timeslot_string}")
+        cls.local_pattern = "fake pattern"
         cls.resource_collection = None
         cls.resource_timeslot = datetime.datetime.now(pytz.utc)
 
     def test_properties(self):
         r = conductor.resources.Resource(self.resource_name,
                                          self.resource_urn,
+                                         self.local_pattern,
                                          collection=None,
                                          timeslot=None)
         tools.assert_is_instance(r.timeslot, datetime.datetime)

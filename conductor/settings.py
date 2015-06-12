@@ -9,7 +9,7 @@ from socket import gethostname
 
 import fileresource
 import resourcemover
-import processingtask
+import tasks
 from timeslotdisplacement import STRATEGY
 from taskrunmode import get_run_mode, RUN_MODE
 
@@ -24,25 +24,30 @@ class Settings(object):
     servers = []
     collections = []
     resources = []
+    tasks = []
 
     def __init__(self):
         self.settings_source = None
         self.servers = []
         self.collections = []
         self.resources = []
+        self.tasks = []
 
     def __repr__(self):
         return "{0}.{1.__class__.__name__}({1.settings_source!r})".format(
             __name__, self)
 
     def available_resources(self):
-        return [r["name"] for r in self.resources]
+        return [i["name"] for i in self.resources]
 
     def available_collections(self):
-        return [r["short_name"] for r in self.collections]
+        return [i["short_name"] for i in self.collections]
 
     def available_servers(self):
-        return [r["name"] for r in self.servers]
+        return [i["name"] for i in self.servers]
+
+    def available_tasks(self):
+        return[i["name"] for i in self.tasks]
 
     def get_settings(self, url):
         parsed_url = urlsplit(url)
@@ -60,6 +65,7 @@ class Settings(object):
                 self.servers = all_settings.get("servers", [])
                 self.collections = all_settings.get("collections", [])
                 self.resources = all_settings.get("resources", [])
+                self.tasks = all_settings.get("tasks", [])
         except IOError as e:
             logger.error(e)
 
@@ -153,7 +159,7 @@ class OldSettings(object):
                 pass
         run_modes = self._get_task_run_modes(
             processing_task_settings.get("run_modes", dict()))
-        task = processingtask.ProcessingTask(name, timeslot,
+        task = tasks.Task(name, timeslot,
                                              creation_mode=run_modes[0],
                                              deletion_mode=run_modes[1],
                                              archiving_mode=run_modes[2],
@@ -291,7 +297,7 @@ old_settings = OldSettings()
 #                pass
 #        run_modes = cls._get_task_run_modes(
 #            processing_task_settings.get("run_modes", dict()))
-#        task = processingtask.ProcessingTask(name, timeslot,
+#        task = processingtask.Task(name, timeslot,
 #                                             creation_mode=run_modes[0],
 #                                             deletion_mode=run_modes[1],
 #                                             archiving_mode=run_modes[2],

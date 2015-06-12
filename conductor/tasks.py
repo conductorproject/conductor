@@ -8,17 +8,32 @@ import logging
 from datetime import datetime
 from tempfile import mkdtemp
 
-from enum import Enum
-
-import taskresource
-import errors
-from taskrunmode import RUN_MODE
-import taskobserver
+from .taskresources import task_resource_factory
+from . import errors
+from . import taskobserver
+from .settings import settings
 
 logger = logging.getLogger(__name__)
 
+class TaskFactory(object):
 
-class ProcessingTask(object):
+    def get_task(self, name, timeslot=None):
+        try:
+            s = [i for i in settings.tasks if i["name"] == name][0]
+        except IndexError:
+            raise errors.TaskNotDefinedError(
+                "Task {!r} is not defined in the settings".format(name))
+        t = Task(name, timeslot, description=s.get("description", u""),
+                 remove_working_dir=s.get("remove_working_directory", True),
+                 decompress_inputs=s.get("decompress_inputs", True))
+        for inp in s.get("inputs", []):
+            pass
+        for out in s.get("outputs", []):
+            pass
+        return t
+
+
+class Task(object):
     description = ""
     working_dir = None
     _timeslot = None
@@ -28,6 +43,10 @@ class ProcessingTask(object):
     _run_progress = 0
     _run_details = ""
     _run_state = ""
+
+    @property
+    def safe_name(self):
+        return self.name.replace(" ", "_")
 
     @property
     def active_inputs(self):
@@ -93,12 +112,7 @@ class ProcessingTask(object):
         return os.path.join(self.working_dir, "outputs")
 
     def __init__(self, name, timeslot, description="",
-                 creation_mode=None, deletion_mode=None,
-                 archiving_mode=None, active_mode=None,
                  remove_working_dir=True, decompress_inputs=True):
-        self.creation_mode = creation_mode
-        self.deletion_mode = deletion_mode
-        self.archiving_mode = archiving_mode
         self.name = name
         self.timeslot = timeslot
         self.description = description
@@ -111,7 +125,6 @@ class ProcessingTask(object):
         self.run_details = ""
         self.run_progress = 0
         self.run_state = "Not running"
-        logger.debug("working_dir: {}".format(self.working_dir))
 
     def update_observers(self):
         [obs() for obs in self._run_observers]
@@ -130,59 +143,34 @@ class ProcessingTask(object):
             delta = resource.file_resource.timeslot - old_timeslot
             resource.file_resource.timeslot = self.timeslot + delta
 
-    def add_inputs(self, file_resource, strategy=None, strategy_params=None,
+    def add_inputs(self, resource, strategy=None, strategy_params=None,
                    except_when=None, optional_when=None, filtering_rules=None,
-                   copy_to_working_dir=True):
-        task_resources = taskresource.factory.get_resources(
-            file_resource, base_timeslot=self.timeslot,
+                   can_get_representation=True):
+        task_resources = task_resource_factory.get_resources(
+            resource, base_timeslot=self.timeslot,
             strategy=strategy, strategy_params=strategy_params,
             except_when=except_when, optional_when=optional_when,
             filtering_rules=filtering_rules,
-            copy_to_working_dir=copy_to_working_dir
+            can_get_representation=can_get_representation
         )
         self._inputs.extend(task_resources)
 
-    def add_outputs(self, file_resource, strategy=None, strategy_params=None,
+    def add_outputs(self, resource, strategy=None, strategy_params=None,
                     except_when=None, optional_when=None, filtering_rules=None,
-                    copy_to_working_dir=True):
-        task_resources = taskresource.factory.get_resources(
-            file_resource, base_timeslot=self.timeslot,
+                    can_get_representation=True):
+        task_resources = task_resource_factory.get_resources(
+            resource, base_timeslot=self.timeslot,
             strategy=strategy, strategy_params=strategy_params,
             except_when=except_when, optional_when=optional_when,
             filtering_rules=filtering_rules,
-            copy_to_working_dir=copy_to_working_dir
+            can_get_representation=can_get_representation
         )
         self._outputs.extend(task_resources)
-
-    def find_inputs(self):
-        found = dict()
-        for inp in self.active_inputs:
-            found[inp] = inp.find()
-        return found
-
-    def find_outputs(self):
-        found = dict()
-        for outp in self.active_outputs:
-            found[outp] = outp.find()
-        return found
-
-    def find_temporary_outputs(self):
-        """
-        Find the task's outputs in the working directory
-        :return:
-        """
-        found = dict()
-        for outp in self.active_outputs:
-            temp_path = os.path.join(self.working_dir_outputs,
-                                     outp.file_resource.search_pattern)
-            f = outp.file_resource.local_mover.find(temp_path)
-            found[outp] = f
-        return found
 
     def fetch_inputs(self):
         fetched = dict()
         for inp in self.active_inputs:
-            logger.info("fetching '{}'...".format(inp.file_resource.name))
+            logger.info("fetching '{}'...".format(inp.resource.name))
             fetched_path = inp.fetch(self.working_dir_inputs)
             if fetched_path is not None and self.decompress_inputs:
                 fetched_path, = inp.file_resource.decompress(fetched_path)
@@ -203,22 +191,7 @@ class ProcessingTask(object):
 
         :return:
         """
-
-        mode_map = {
-            RUN_MODE.CREATION_MODE: self.run_creation_mode,
-            RUN_MODE.DELETION_MODE: self.run_deletion_mode,
-            RUN_MODE.MOVING_MODE: self.run_moving_mode,
-        }
-        try:
-            result = mode_map[mode](mode)
-        except KeyError:
-            raise errors.RunModeError("invalid run_mode {}".format(mode))
-        return result
-
-    def run_creation_mode(self, mode):
-        logger.info("Running '{0.name}' in creation mode...".format(self))
         result = True
-        self.initialize_mode(mode)
         fetched = self.fetch_inputs()
         able, able_details = self.able_to_execute(fetched)
         if able:
@@ -230,48 +203,9 @@ class ProcessingTask(object):
                     "outputs were found: {}".format(generated_details)
                 )
             self.move_outputs(execution_result)
-            self.finalize_mode(mode)
         else:
             raise errors.ExecutionCannotStartError(able_details)
         return result
-
-    def run_deletion_mode(self):
-        logger.info("Running '{0.name}' in deletion mode...".format(self))
-        result = True
-        return result
-
-    def run_moving_mode(self):
-        logger.info("Running '{0.name}' in moving mode...".format(self))
-        result = True
-        return result
-
-    def initialize_mode(self, mode):
-        """
-        Perform some task specific initialization.
-
-        This method can be reimplemented in child classes in order to
-        perform some pre-processing steps. The default implementation
-        does nothing.
-
-        :param mode:
-        :type mode: taskrunmode.RUN_MODE
-        :return: None
-        """
-        pass
-
-    def finalize_mode(self, mode):
-        """
-        Perform some task specific finalization.
-
-        This method can be reimplemented in child classes in order to
-        perform some post-processing steps. The default implementation
-        does nothing.
-
-        :param mode:
-        :type mode: taskrunmode.RUN_MODE
-        :return: None
-        """
-        pass
 
     def able_to_execute(self, fetched_inputs):
         """

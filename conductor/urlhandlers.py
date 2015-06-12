@@ -10,9 +10,9 @@ import logging
 from ftputil import FTPHost
 import ftputil.error
 
-from conductor import ConductorScheme
-import conductor.errors
-import conductor.urlparser
+from . import ConductorScheme
+from . import errors
+from . import urlparser
 
 logger = logging.getLogger(__file__)
 
@@ -73,7 +73,7 @@ class FileUrlHandler(BaseUrlHandler):
         try:
             shutil.copyfile(path, destination)
         except IOError as err:
-            raise conductor.errors.ResourceNotFoundError(err.args)
+            raise errors.ResourceNotFoundError(err.args)
         return destination
 
     def post_to_url(self, url, path):
@@ -96,9 +96,9 @@ class FileUrlHandler(BaseUrlHandler):
         except (OSError, IOError) as err:
             err_no, msg = err.args
             if err_no == 2:
-                raise conductor.errors.LocalPathNotFoundError(msg)
+                raise errors.LocalPathNotFoundError(msg)
             elif err_no == 13:
-                raise conductor.errors.ResourceNotFoundError(msg)
+                raise errors.ResourceNotFoundError(msg)
             else:
                 raise
         return destination
@@ -134,9 +134,9 @@ class FtpUrlHandler(BaseUrlHandler):
                 h.download(url.path_part, destination)
         except ftputil.error.PermanentError as err:
             if err.errno == 530:
-                raise conductor.errors.InvalidUserCredentialsError(err.args)
+                raise errors.InvalidUserCredentialsError(err.args)
             elif err.errno == 550:
-                raise conductor.errors.ResourceNotFoundError(err.args)
+                raise errors.ResourceNotFoundError(err.args)
             else:
                 raise
         except ftputil.error.FTPOSError as err:
@@ -144,11 +144,11 @@ class FtpUrlHandler(BaseUrlHandler):
             if code == -2:
                 logger.error("Server {} not found: {}".format(
                     url.host_name, msg))
-                raise conductor.errors.HostNotFoundError(
+                raise errors.HostNotFoundError(
                     "Server {} not found".format(url.host_name))
             raise
         except ftputil.error.FTPIOError as err:
-            raise conductor.errors.ResourceNotFoundError(err.args)
+            raise errors.ResourceNotFoundError(err.args)
         return destination
 
     def post_to_url(self, url, path):
@@ -160,16 +160,16 @@ class FtpUrlHandler(BaseUrlHandler):
                     h.makedirs(destination_dir)
                 h.upload(path, destination)
         except ftputil.error.FTPIOError as err:
-            raise conductor.errors.ResourceNotFoundError(err.args)
+            raise errors.ResourceNotFoundError(err.args)
         except ftputil.error.PermanentError as err:
             if err.errno == 550:
-                raise conductor.errors.ResourceNotFoundError(err.args)
+                raise errors.ResourceNotFoundError(err.args)
             else:
                 raise
         except IOError as err:
             err_no, msg = err.args
             if err_no == 2:
-                raise conductor.errors.LocalPathNotFoundError(msg)
+                raise errors.LocalPathNotFoundError(msg)
         return destination
 
 

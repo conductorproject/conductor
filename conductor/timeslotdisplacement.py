@@ -6,52 +6,40 @@ from datetime import datetime, timedelta
 from calendar import monthrange
 import logging
 
-from enum import Enum
-
 logger = logging.getLogger(__name__)
 
-STRATEGY = Enum("STRATEGY",
-                "SINGLE_ABSOLUTE "
-                "SINGLE_RELATIVE "
-                "MULTIPLE_ORDERED")
 
-class TimeslotDisplacementStrategy(object):
+class TimeslotDisplacement(object):
 
-    offset_years = 0
-    offset_months = 0
-    offset_days = 0
-    offset_hours = 0
-    offset_minutes = 0
-    offset_dekades = 0
     base_timeslot = None
-
+    years = 0
+    months = 0
+    days = 0
+    hours = 0
+    minutes = 0
+    dekades = 0
     _reference_timeslot = base_timeslot
-    """
-    This is the timeslot that results from offsetting the base_timeslot
-    with the initial offsets
-    """
 
     @property
     def reference_timeslot(self):
         if self.base_timeslot is not None:
-            ts = self.offset_timeslot(self.base_timeslot, self.offset_years,
-                                      self.offset_months, self.offset_days,
-                                      self.offset_hours, self.offset_minutes,
-                                      self.offset_dekades)
+            ts = self.offset_timeslot(self.base_timeslot, self.years,
+                                      self.months, self.days,
+                                      self.hours, self.minutes,
+                                      self.dekades)
         else:
             ts = None
         return ts
 
-    def __init__(self, base_timeslot, offset_years=0, offset_months=0,
-                 offset_days=0, offset_hours=0, offset_minutes=0,
-                 offset_dekades=0):
+    def __init__(self, base_timeslot, years=0, months=0, days=0, hours=0,
+                 minutes=0, dekades=0):
         self.base_timeslot = base_timeslot
-        self.base_offset_years = offset_years
-        self.base_offset_months = offset_months
-        self.base_offset_days = offset_days
-        self.base_offset_hours = offset_hours
-        self.base_offset_minutes = offset_minutes
-        self.base_offset_dekades = offset_dekades
+        self.years = years
+        self.months = months
+        self.days = days
+        self.hours = hours
+        self.minutes = minutes
+        self.dekades = dekades
 
     @classmethod
     def offset_timeslot(cls, timeslot, years=0, months=0, days=0, hours=0,
@@ -88,78 +76,11 @@ class TimeslotDisplacementStrategy(object):
         delta = timedelta(days=days, seconds=offset_time)
         return candidate + delta
 
-
-class SingleAbsoluteStrategy(TimeslotDisplacementStrategy):
-
-    def __init__(self, base_timeslot, offset_years=0, offset_months=0,
-                 offset_days=0, offset_hours=0, offset_minutes=0,
-                 offset_dekades=0):
-        super(SingleAbsoluteStrategy, self).__init__(base_timeslot,
-                                                     offset_years,
-                                                     offset_months,
-                                                     offset_days,
-                                                     offset_hours,
-                                                     offset_minutes,
-                                                     offset_dekades)
-
-    def get_timeslot(self, offset_years=0, offset_months=0, offset_days=0,
-                     offset_hours=0, offset_minutes=0, offset_dekades=0):
-        return self.offset_timeslot(self.reference_timeslot, offset_years,
-                                    offset_months, offset_days, offset_hours,
-                                    offset_minutes, offset_dekades)
-
-
-
-class SingleRelativeStrategy(TimeslotDisplacementStrategy):
-    AGE = Enum("AGE", "MOST_RECENT LEAST_RECENT")
-    FIX = Enum("FIX", "YEAR MONTH DAY HOUR MINUTE DEKADE")
-    REGARDING = Enum("REGARDING", "BASE_TIMESLOT REFERENCE_TIMESLOT")
-    CONSTRAIN = Enum("CONSTRAIN", "BEFORE AFTER REGARDLESS")
-
-    def __init__(self, base_timeslot, offset_years=0, offset_months=0,
-                 offset_days=0, offset_hours=0, offset_minutes=0,
-                 offset_dekades=0,
-                 age=AGE.MOST_RECENT,
-                 fix=None,
-                 regarding=REGARDING.REFERENCE_TIMESLOT,
-                 constrain=CONSTRAIN.REGARDLESS):
-        super(SingleRelativeStrategy, self).__init__(base_timeslot,
-                                                     offset_years,
-                                                     offset_months,
-                                                     offset_days,
-                                                     offset_hours,
-                                                     offset_minutes,
-                                                     offset_dekades)
-        self.age = age
-        self.fix = []
-        for f in (fix if fix is not None else []):
-            if f in self.REGARDING:
-                self.fix.append(f)
-        self.regarding = regarding
-        self.constrain = constrain
-
-    def get_timeslot(self):
-        return self.reference_timeslot
-
-
-class MultipleOrderedStategy(TimeslotDisplacementStrategy):
-
-    def __init__(self, base_timeslot, offset_years=0, offset_months=0,
-                 offset_days=0, offset_hours=0, offset_minutes=0,
-                 offset_dekades=0):
-        super(MultipleOrderedStategy, self).__init__(base_timeslot,
-                                                     offset_years,
-                                                     offset_months,
-                                                     offset_days,
-                                                     offset_hours,
-                                                     offset_minutes,
-                                                     offset_dekades)
-
     def get_timeslots(self, start_years=0, start_months=0, start_days=0,
                       start_hours=0, start_minutes=0, start_dekades=0,
                       frequency_years=0, frequency_months=0, frequency_days=0,
                       frequency_hours=0, frequency_minutes=0,
-                      frequency_dekades=0, number_of_timeslots=1):
+                      frequency_dekades=0, number_of_timeslots=0):
         result = []
         for i in xrange(number_of_timeslots):
             off_years = start_years + i * frequency_years

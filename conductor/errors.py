@@ -10,6 +10,10 @@ class ResourceNotDefinedError(ConductorError):
     pass
 
 
+class TaskNotDefinedError(ConductorError):
+    pass
+
+
 class CollectionNotDefinedError(ConductorError):
     pass
 
