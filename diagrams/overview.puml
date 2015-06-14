@@ -3,144 +3,37 @@
 hide empty attributes
 hide empty methods
 
-ResourceMover <|-- LocalMover
-ResourceMover <|-- RemoteMover
-RemoteMover <|-- SftpMover
-RemoteMover <|-- FtpMover
-RemoteMover <|-- CswMover
-FileResource "*" -up- "*" RemoteMover : +predefined_remote_movers
-FileResource "*" -- "*" Package
-(FileResource, Package) .. PackageResource
-Package "*" - "*" ProcessingLine
-(Package, ProcessingLine) .. ProcessingLinePackage
-ProcessingLinePackage "*" -- "*" ProcessingLinePackage : +dependencies
-(ProcessingLinePackage, ProcessingLinePackage) .. Dependency
-
-class ResourceMover {
-    +name: str
-    +data_dir: str
-    {abstract}find(file_pattern)
-    {abstract}fetch(paths)
-    {abstract}copy(origin_paths, destination_dir)
-    {abstract}delete(paths)
+class CollectionFactory {
+    +get_collection(short_name)
 }
 
-class LocalMover {
-    +find(file_pattern)
-    +fetch(paths)
-    +copy(origin_paths, destination_dir)
-    +delete(paths)
+class Collection {
+    +short_name: unicode
+    +name: unicode
 }
 
-class RemoteMoverFactory {
-    -cache: dict
-    get_mover(name, protocol, **protocol_parameters)
+class Resource {
+    +name: unicode
+    +urn: unicode
+    +collection: Collection
+    +local_pattern: unicode
+    +timeslot: datetime
+    +timeslot_string: unicode
+    +dekade: int
+    +year_day: int
+    -name
+    -urn
+    -local_pattern
+    -get_locations
+    -post_locations
+    +add_get_location()
+    +add_post_location()
+    +show_get_parameters()
+    +show_post_parameters()
+    +get_representation()
+    +post_representation()
+    +find_local()
+    -show_mover_method_parameters()
 }
-
-class SftpMover {
-    +find(file_pattern)
-    +fetch(paths)
-    +copy(origin_paths, destination_dir)
-    +delete(paths)
-}
-
-class FtpMover {
-    +find(file_pattern)
-    +fetch(paths)
-    +copy(origin_paths, destination_dir)
-    +delete(paths)
-}
-
-class CswMover {
-    +find(file_pattern)
-    +fetch(paths)
-    +copy(origin_paths, destination_dir)
-    +delete(paths)
-}
-
-class Package {
-    +name: str
-    +timeslot: datetime.Datetime
-    +run()
-    +find_inputs()
-    +find_outputs()
-    +fetch_inputs()
-    +fetch_outputs()
-    +clean_outputs()
-    +archive_outputs()
-    -able_to_execute()
-    -execute()
-    -run_pre_execution()
-    -run_post_execution()
-    -clean_temporary_files()
-}
-
-class PackageResource {
-    +role: INPUT || OUTPUT
-    +mandatory: bool
-}
-
-class FileResource {
-    +name: str
-    +use_predefined_movers: bool = False
-    +search_pattern: str
-    +search_path: str
-    +local_mover: LocalMover [0..1]
-    +selection_rule: SelectionRule
-    +timeslot: DateTime
-    +product: Product [0..1]
-    +source: Source [0..1]
-    +find(additional_movers=[])
-    +fetch()
-    +delete(path, remote_mover=None)
-    +copy_to(path, destination, remote_mover=None)
-    -copy_to_local(path, destination)
-    -copy_to_remote(path, destination, remote_mover)
-    -delete_local_path(path)
-    -delete_remote_path(path, remote_mover)
-}
-
-class Source {
-    +name
-}
-
-class Product {
-    +name:str
-    +long_name:str
-}
-
-class ProcessingLine {
-    +name
-}
-
-class ProcessingLinePackage {
-    +category: str
-}
-
-class Settings {
-    -package_settings: dict
-    -file_resource_settings: dict
-    -mover_settings: dict
-    -remote_mover_factory: RemoteMoverFactory
-    {static} get_settings(uri)
-    {static} get_package(name, timeslot)
-    {static} get_file_resource(name, timeslot)
-    {static} get_mover(name)
-}
-
-class Dependency {
-    +first: ProcessingLinePackage
-    +second: ProcessingLinePackage
-    +type: str = depends_on || is_dependency_to
-}
-
-note right of FileResource
-The search_pattern and search_path attributes are strings that
-are first formatted using the format() function and after that
-treated as a regular expression patterns
-
-The paths argument to the fetch() and delete() methods is a full
-path to the path that is to be fetched
-end note
 
 @enduml

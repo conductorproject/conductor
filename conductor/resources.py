@@ -416,3 +416,30 @@ class Resource(object):
                 if os.path.isfile(i_path) and re.search(self.local_pattern, i):
                     result = i_path
         return result
+
+
+class ResourceLocation(object):
+
+    server = None
+    scheme = None
+    relative_paths = []
+    authorization = u""
+    media_type = u""
+
+    def __init__(self, relative_paths, media_type, server=None, scheme=None,
+                 authorization=u"", location_for=ServerSchemeMethod.GET):
+        server = server or server_factory.get_server()
+        scheme = scheme or ConductorScheme.FILE
+        config = {
+            ServerSchemeMethod.GET: server.schemes_get,
+            ServerSchemeMethod.POST: server.schemes_post,
+        }[location_for]
+        if scheme in [c.scheme for c in config]:
+            self.server = server
+            self.scheme = scheme
+            self.relative_paths = relative_paths
+            self.authorization = authorization
+            self.media_type = media_type
+        else:
+            raise errors.InvalidSchemeError(
+                "Unsupported scheme {} for server {}".format(scheme, server))
