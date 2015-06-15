@@ -4,11 +4,8 @@ Classes for managing conductor.task resources
 
 import copy
 import logging
-import datetime
 
-from conductor import errors
-from conductor import timeslotdisplacement as tsd
-from conductor import TimeslotStrategy
+from .. import timeslotdisplacement as tsd
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +64,8 @@ class TaskResourceFactory(object):
         slots = []
         if multiple_timeslots is not None:
             for i in xrange(multiple_timeslots.get("number_of_timeslots", 1)):
-                value = multiple_timeslots.get("frequency", 1) * i
-                param = {multiple_timeslots["frequency_unit"]: value}
+                v = multiple_timeslots.get("frequency", 1) * i
+                param = {multiple_timeslots.get("frequency_unit", "hour"): v}
                 slots.append(tsd.TimeslotDisplacement.offset_timeslot(
                     base_timeslot, **param))
         else:
@@ -78,7 +75,7 @@ class TaskResourceFactory(object):
             if len(multiple_parameters) > 0:
                 for p in multiple_parameters:
                     for v in p["values"]:
-                        r = copy.copy(base_resource)
+                        r = copy.deepcopy(base_resource)
                         r.timeslot = s
                         r.parameters[p["parameter"]] = v
                         new_resources.append(r)

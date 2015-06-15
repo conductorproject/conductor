@@ -8,12 +8,12 @@ import logging
 from datetime import datetime
 from tempfile import mkdtemp
 
-from conductor.resources import resource_factory
-from conductor.tasks.taskresources import task_resource_factory
-from conductor import errors
-from conductor.tasks import taskobserver
-from conductor import TaskResourceRole
-from conductor.settings import settings
+from .. import TaskResourceRole
+from .. import errors
+from ..resources import resource_factory
+from ..settings import settings
+from .taskresources import task_resource_factory
+from . import taskobserver
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,8 @@ class TaskFactory(object):
         except IndexError:
             raise errors.TaskNotDefinedError(
                 "Task {!r} is not defined in the settings".format(name))
-        t = Task(name, timeslot, description=s.get("description", u""),
+        t = Task(name, s["urn"], timeslot,
+                 description=s.get("description", u""),
                  remove_working_dir=s.get("remove_working_directory", True),
                  decompress_inputs=s.get("decompress_inputs", True))
         for inp in s.get("inputs", []):
@@ -49,19 +50,29 @@ task_factory = TaskFactory()
 
 
 class Task(object):
-    description = ""
+    description = u""
     working_dir = None
+    name = u""
+    _urn = u""
     _timeslot = None
     _inputs = []
     _outputs = []
     _run_observers = []
     _run_progress = 0
-    _run_details = ""
-    _run_state = ""
+    _run_details = u""
+    _run_state = u""
 
     @property
     def safe_name(self):
         return self.name.replace(" ", "_")
+
+    @property
+    def urn(self):
+        return self._urn.format(self)
+
+    @urn.setter
+    def urn(self, urn):
+        self._urn = urn
 
     @property
     def active_inputs(self):
@@ -90,6 +101,14 @@ class Task(object):
         old_timeslot = self._timeslot
         self._timeslot = timeslot
         self._reconfigure_resources(old_timeslot)
+
+    @property
+    def timeslot_string(self):
+        if self.timeslot is not None:
+            result = self.timeslot.strftime("%Y%m%d%H%M")
+        else:
+            result = ""
+        return result
 
     @property
     def run_progress(self):
@@ -126,9 +145,10 @@ class Task(object):
     def working_dir_outputs(self):
         return os.path.join(self.working_dir, "outputs")
 
-    def __init__(self, name, timeslot, description="",
+    def __init__(self, name, urn, timeslot, description="",
                  remove_working_dir=True, decompress_inputs=True):
         self.name = name
+        self._urn = urn
         self.timeslot = timeslot
         self.description = description
         self._inputs = []

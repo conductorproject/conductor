@@ -1,7 +1,7 @@
 {
   "tasks": [
     {
-      "name": "testing package",
+      "name": "other testing package",
       "urn": "copernicus_gl:ipma:{0.safe_name}:{0.timeslot_string}",
       "description": "A bogus description for this task",
       "inputs": [
@@ -22,12 +22,30 @@
           "generate_multiple_timeslots": {
             "frequency_unit": "hour",
             "frequency": 1,
-            "number_of_timeslots": 10
+            "number_of_timeslots": 3
           },
           "generate_multiple_parameters": [
             {
               "parameter": "ecmwf_run",
-              "values": [12, 13, 14, 15, 16, 17, 18, 18, 19]
+              "values": [12, 13, 14, 15, 16]
+            }
+          ]
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "name": "testing package",
+      "urn": "copernicus_gl:ipma:{0.safe_name}:{0.timeslot_string}",
+      "description": "A bogus description for this task",
+      "inputs": [
+        {
+          "name": "ecmwf fields",
+          "can_get_representation": true,
+          "generate_multiple_parameters": [
+            {
+              "parameter": "ecmwf_run",
+              "values": [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
             }
           ]
         }
