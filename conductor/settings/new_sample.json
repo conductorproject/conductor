@@ -6,83 +6,124 @@
       "description": "A bogus description for this task",
       "inputs": [
         {
-          "name": "teste",
-          "strategy": {
-            "name": "MULTIPLE",
-            "start_days": 0,
-            "frequency_hours": 1,
-            "number_of_timeslots": 22
-          },
+          "name": "ecmwf fields",
           "except_when": {
-            "hours": [1, 2, 3, 4]
+            "hour": [1, 2, 3, 4],
+            "day": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
           },
           "optional_when": {
-            "days": [1]
+            "day": [20]
           },
-          "can_get_representation": true
+          "can_get_representation": true,
+          "displace_timeslot": {
+            "hour": 1,
+            "dekade": -1
+          },
+          "generate_multiple_timeslots": {
+            "frequency_unit": "hour",
+            "frequency": 1,
+            "number_of_timeslots": 10
+          },
+          "generate_multiple_parameters": [
+            {
+              "parameter": "ecmwf_run",
+              "values": [12, 13, 14, 15, 16, 17, 18, 18, 19]
+            }
+          ]
         }
       ],
       "outputs": []
     }
   ],
   "resources": [
+    {
+      "name": "ecmwf fields",
+      "local_pattern": "GRIB_F-{0.parameters[ecmwf_run]:03d}_ECMWF_All_Globe_{0.timeslot_string}",
+      "urn": "copernicus_gl:ipma:internal_products:{0.local_pattern}",
+      "parameters": [
         {
-          "name": "teste",
-          "local_pattern": "g2_BIOPAR_{0.collection.short_name}_{0.timeslot_string}_AFRI_GEO_v1",
-          "collection": "LST",
-          "urn": "copernicus_gl:ipma:{0.collection.short_name}:{0.timeslot_string}",
-          "get_locations": [
-            {
-              "server": "geo2",
-              "scheme": "file",
-              "relative_paths": [
-                "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.timeslot.hour:02d}/{0.local_pattern}.bz2",
-                "fake/path/for/debugging"
-              ],
-              "media_type": "HDF5-Copernicus+bzip2"
-            },
-            {
-              "server": "geo2",
-              "scheme": "ftp",
-              "relative_paths": [
-                "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.local_pattern}",
-                "another/path/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}",
-                "/now/a/full/path/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
-              ],
-              "authorization": "scheme_user_information",
-              "media_type": "HDF5-Copernicus"
-            },
-            {
-              "server": "geo2",
-              "scheme": "sftp",
-              "relative_paths": [
-                "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
-              ],
-              "authorization": "scheme_user_information_authorization",
-              "media_type": "HDF5-Copernicus"
-            },
-            {
-              "server": "geo2",
-              "scheme": "http",
-              "relative_paths": [
-                "products/{0.collection.short_name}?timeslot={0.timeslot_string}#resource",
-                "new_products/{0.collection.short_name}/{0.timeslot_string}"
-              ],
-              "authorization": "api_key_authorization",
-              "media_type": "HDF5-Copernicus"
-            }
-          ],
-          "post_locations": [
-            {
-              "server": "geo2",
-              "scheme": "file",
-              "relative_paths": [
-                "fake/path/for"
-              ],
-              "media_type": "HDF5-Copernicus"
-            }
-          ]
+          "name": "ecmwf_run",
+          "value": 0
         }
+      ],
+      "get_locations": [
+        {
+          "server": "geo2",
+          "scheme": "file",
+          "relative_paths": [
+            "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.timeslot.hour:02d}/{0.local_pattern}.bz2"
+          ],
+          "media_type": "HDF5-Copernicus+bzip2"
+        }
+      ],
+      "post_locations": [
+        {
+          "server": "geo2",
+          "scheme": "file",
+          "relative_paths": [
+            "fake/path/for"
+          ],
+          "media_type": "HDF5-Copernicus"
+        }
+      ]
+    },
+    {
+      "name": "teste",
+      "local_pattern": "g2_BIOPAR_{0.collection.short_name}_{0.timeslot_string}_AFRI_GEO_v1",
+      "collection": "LST",
+      "urn": "copernicus_gl:ipma:{0.collection.short_name}:{0.timeslot_string}",
+      "get_locations": [
+        {
+          "server": "geo2",
+          "scheme": "file",
+          "relative_paths": [
+            "OUTPUT_DATA/POST_PROCESS/NGP2GRID_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.timeslot.hour:02d}/{0.local_pattern}.bz2",
+            "fake/path/for/debugging"
+          ],
+          "media_type": "HDF5-Copernicus+bzip2"
+        },
+        {
+          "server": "geo2",
+          "scheme": "ftp",
+          "relative_paths": [
+            "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.local_pattern}",
+            "another/path/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}",
+            "/now/a/full/path/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
+          ],
+          "authorization": "scheme_user_information",
+          "media_type": "HDF5-Copernicus"
+        },
+        {
+          "server": "geo2",
+          "scheme": "sftp",
+          "relative_paths": [
+            "post_processing/ngp2grid_g2/v4.1/{0.collection.short_name}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/g2_BIOPAR_HDF5_{0.collection.short_name}_{0.timeslot_string}"
+          ],
+          "authorization": "scheme_user_information_authorization",
+          "media_type": "HDF5-Copernicus"
+        },
+        {
+          "server": "geo2",
+          "scheme": "http",
+          "relative_paths": [
+            "products/{0.collection.short_name}?timeslot={0.timeslot_string}#resource",
+            "new_products/{0.collection.short_name}/{0.timeslot_string}"
+          ],
+          "authorization": "api_key_authorization",
+          "media_type": "HDF5-Copernicus"
+        }
+      ],
+      "post_locations": [
+        {
+          "server": "geo2",
+          "scheme": "file",
+          "relative_paths": [
+            "fake/path/for"
+          ],
+          "media_type": "HDF5-Copernicus"
+        }
+      ]
+    }
   ],
   "servers": [
     {

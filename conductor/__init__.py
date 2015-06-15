@@ -20,3 +20,8 @@ class TimeslotStrategy(enum.Enum):
 
     SINGLE = 1
     MULTIPLE = 2
+
+class TaskResourceRole(enum.Enum):
+
+    INPUT = 1
+    OUTPUT = 2

@@ -126,8 +126,11 @@ class ResourceFactory(object):
         collection = None
         if s.get("collection") is not None:
             collection = collection_factory.get_collection(s["collection"])
+        params = dict()
+        for p in s.get("parameters", dict()):
+            params[p["name"]] = p.get("value")
         r = Resource(name, s["urn"], s["local_pattern"], collection=collection,
-                     timeslot=timeslot)
+                     timeslot=timeslot, parameters=params)
         for loc_get in self._parse_resource_locations(
                 s["get_locations"], ServerSchemeMethod.GET):
             r.add_get_location(*loc_get)
@@ -180,6 +183,7 @@ class Resource(object):
     A resource can also be posted to multiple URLs.
     """
 
+    parameters = dict()
     _name = u""
     _urn = u""
     _timeslot = None
@@ -235,6 +239,10 @@ class Resource(object):
         self._name = name
 
     @property
+    def safe_name(self):
+        return self.name.replace(" ", "_")
+
+    @property
     def urn(self):
         return self._urn.format(self)
 
@@ -251,7 +259,8 @@ class Resource(object):
         self._local_pattern = pattern
 
     def __init__(self, name, urn, local_pattern, collection=None,
-                 timeslot=None):
+                 timeslot=None, parameters=None):
+        self.parameters = parameters.copy() if parameters else dict()
         self.collection = collection
         self._name = name
         self._urn = urn

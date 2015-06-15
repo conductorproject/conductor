@@ -8,10 +8,12 @@ import logging
 from datetime import datetime
 from tempfile import mkdtemp
 
-from .taskresources import task_resource_factory
-from . import errors
-from . import taskobserver
-from .settings import settings
+from conductor.resources import resource_factory
+from conductor.tasks.taskresources import task_resource_factory
+from conductor import errors
+from conductor.tasks import taskobserver
+from conductor import TaskResourceRole
+from conductor.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +29,23 @@ class TaskFactory(object):
                  remove_working_dir=s.get("remove_working_directory", True),
                  decompress_inputs=s.get("decompress_inputs", True))
         for inp in s.get("inputs", []):
-            pass
+            resource = resource_factory.get_resource(inp["name"], t.timeslot)
+            task_resources = task_resource_factory.get_task_resources(
+                resource, except_when=inp.get("except_when", {}),
+                optional_when=inp.get("optional_when", {}),
+                can_get_representation=inp.get("can_get_representation", True),
+                displace_timeslot=inp.get("displace_timeslot", {}),
+                multiple_timeslots=inp.get("generate_multiple_timeslots", {}),
+                multiple_parameters=inp.get("generate_multiple_parameters", [])
+            )
+            for tr in task_resources:
+                t.add_task_resource(tr, TaskResourceRole.INPUT)
         for out in s.get("outputs", []):
             pass
         return t
+
+
+task_factory = TaskFactory()
 
 
 class Task(object):
@@ -143,29 +158,12 @@ class Task(object):
             delta = resource.file_resource.timeslot - old_timeslot
             resource.file_resource.timeslot = self.timeslot + delta
 
-    def add_inputs(self, resource, strategy=None, strategy_params=None,
-                   except_when=None, optional_when=None, filtering_rules=None,
-                   can_get_representation=True):
-        task_resources = task_resource_factory.get_resources(
-            resource, base_timeslot=self.timeslot,
-            strategy=strategy, strategy_params=strategy_params,
-            except_when=except_when, optional_when=optional_when,
-            filtering_rules=filtering_rules,
-            can_get_representation=can_get_representation
-        )
-        self._inputs.extend(task_resources)
-
-    def add_outputs(self, resource, strategy=None, strategy_params=None,
-                    except_when=None, optional_when=None, filtering_rules=None,
-                    can_get_representation=True):
-        task_resources = task_resource_factory.get_resources(
-            resource, base_timeslot=self.timeslot,
-            strategy=strategy, strategy_params=strategy_params,
-            except_when=except_when, optional_when=optional_when,
-            filtering_rules=filtering_rules,
-            can_get_representation=can_get_representation
-        )
-        self._outputs.extend(task_resources)
+    def add_task_resource(self, task_resource, role):
+        group = {
+            TaskResourceRole.INPUT: self._inputs,
+            TaskResourceRole.OUTPUT: self._outputs,
+        }[role]
+        group.append(task_resource)
 
     def fetch_inputs(self):
         fetched = dict()

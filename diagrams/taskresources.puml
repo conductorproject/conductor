@@ -1,0 +1,33 @@
+@startuml
+start
+:TaskResource;
+if (known timeslot?) then (no)
+    :ResourceFinder;
+    if (found resource?) then (no)
+        end
+    else (yes)
+    endif
+else (yes)
+endif
+if (has timeslot displacements?) then (no)
+else (yes)
+    :displace timeslot;
+endif
+if (has timeslot multiplication?) then (no)
+    :a list with a single resource;
+else (yes)
+    :a list with multiple resources
+    generated based on timeslot
+    multiplication rules;
+endif
+repeat
+    repeat
+        :generate new resource based on
+        parameter multiplication rules;
+    repeat while (each parameter)
+repeat while (each resource)
+repeat
+    :pedro vai comer;
+repeat while (pedro ainda não foi)
+stop
+@enduml
