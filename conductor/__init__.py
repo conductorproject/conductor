@@ -14,6 +14,7 @@ class ConductorScheme(enum.Enum):
 class ServerSchemeMethod(enum.Enum):
     GET = 1
     POST = 2
+    FIND = 3
 
 
 class TimeslotStrategy(enum.Enum):

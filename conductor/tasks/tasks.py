@@ -10,7 +10,7 @@ from tempfile import mkdtemp
 
 from .. import TaskResourceRole
 from .. import errors
-from ..resources import resource_factory
+from ..resources.resources import resource_factory
 from ..settings import settings
 from .taskresources import task_resource_factory
 from . import taskobserver

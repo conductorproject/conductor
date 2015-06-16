@@ -8,7 +8,7 @@ import logging
 from conductor import ConductorScheme
 import conductor.errors
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 class Url(object):
@@ -26,7 +26,12 @@ class Url(object):
     @property
     def path_part(self):
         pp = self._path_part if self._path_part else ""
-        return pp.format(self.parent) if self.parent else pp
+        result = pp
+        try:
+            result = pp.format(self.parent) if self.parent else pp
+        except IndexError:
+            logger.debug("Cannot format path_part")
+        return result
 
     @path_part.setter
     def path_part(self, new_path_part):
@@ -146,12 +151,17 @@ class Url(object):
     @staticmethod
     def extract_query_params(url_string):
         params = dict()
-        rest, sep, query_part = url_string.partition("?")
-        if query_part != "":
-            dehashed, sep, hash_part = query_part.partition("#")
-            for pair in dehashed.split("&"):
-                name, value = pair.split("=")
-                params[name] = value
+        try:
+            rest, sep, query_part = url_string.partition("?")
+            if query_part != "":
+                dehashed, sep, hash_part = query_part.partition("#")
+                for pair in dehashed.split("&"):
+                    name, value = pair.split("=")
+                    params[name] = value
+        except ValueError:
+            logger.debug("there was an error extracting query params from {}. "
+                        "Continuing...".format(url_string))
+            rest = url_string
         return params, rest
 
     @staticmethod

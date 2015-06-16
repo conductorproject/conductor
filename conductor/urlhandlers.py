@@ -4,6 +4,7 @@ Handlers that take care of GETting and POSTing resources to and from URLs
 
 import os
 import os.path
+import re
 import shutil
 import logging
 
@@ -12,7 +13,6 @@ import ftputil.error
 
 from . import ConductorScheme
 from . import errors
-from . import urlparser
 
 logger = logging.getLogger(__file__)
 
@@ -49,6 +49,11 @@ class BaseUrlHandler(object):
 
 class FileUrlHandler(BaseUrlHandler):
 
+    def find_in_url(self, url, selection_method="latest"):
+        found = self.select_path(url.path_part,
+                                 selection_method=selection_method)
+        return found
+
     def get_from_url(self, url, destination_directory):
         """
         Get the representation of the resource available at the input URL
@@ -76,7 +81,8 @@ class FileUrlHandler(BaseUrlHandler):
             raise errors.ResourceNotFoundError(err.args)
         return destination
 
-    def post_to_url(self, url, path):
+    @staticmethod
+    def post_to_url(url, path):
         """
         Send a file to the input URL.
 
@@ -102,6 +108,68 @@ class FileUrlHandler(BaseUrlHandler):
             else:
                 raise
         return destination
+
+    @staticmethod
+    def select_path(full_path_pattern, selection_method="latest",
+                    except_paths=None):
+        """
+        Return the full path to an existing directory that meets search criteria
+
+        This function accepts a pattern that is interpreted as being the
+        specification for finding a real path on the filesystem.
+
+        >>> server_base_path = "/home/geo2/test_data/giosystem/data"
+        >>> relative_path = "OUTPUT_DATA/PRE_PROCESS/LRIT2HDF5_g2/DYNAMIC_OUTPUT/v2.4"
+        >>> dynamic_part = "(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})"
+        >>> path = os.path.join(server_base_path, relative_path, dynamic_part)
+        >>> select_path(path, selection_method="latest")
+
+        :param full_path_pattern:
+        :param selection_method:
+        :param except_paths:
+        :return:
+        """
+        except_paths = except_paths if except_paths is not None else []
+        base = full_path_pattern[:full_path_pattern.find("(")]
+        dynamic = full_path_pattern[full_path_pattern.find("("):]
+        dynamic_parts = dynamic.split("/")
+        current_path = base
+        if len(dynamic_parts) > 1:
+            next_hierarchic_part = 0
+            while 0 <= next_hierarchic_part < len(dynamic_parts):
+                hierarchic_part = dynamic_parts[next_hierarchic_part]
+                old_path = current_path
+                candidates = []
+                try:
+                    for c in os.listdir(current_path):
+                        if os.path.isdir(os.path.join(current_path, c)):
+                            re_obj = re.search(hierarchic_part, c)
+                            if re_obj is not None:
+                                candidates.append(c)
+                except OSError:
+                    pass
+                sorted_candidates = sorted(candidates)
+                if selection_method == "latest":
+                    sorted_candidates.reverse()
+                candidate_index = 0
+                found = False
+                while candidate_index < len(sorted_candidates) and not found:
+                    current_path = os.path.join(
+                        old_path, sorted_candidates[candidate_index])
+                    found = True if current_path not in except_paths else False
+                    candidate_index += 1
+                if found:
+                    next_hierarchic_part += 1
+                else:
+                    # cycle back to the previous hierarchic level
+                    next_hierarchic_part -= 1
+                    cycle_back_path = os.path.dirname(current_path)
+                    except_paths.append(cycle_back_path)
+                    current_path = os.path.dirname(cycle_back_path)
+        else:
+            current_path = (current_path if current_path not in
+                                            except_paths else None)
+        return current_path
 
 
 class FtpUrlHandler(BaseUrlHandler):
@@ -151,7 +219,8 @@ class FtpUrlHandler(BaseUrlHandler):
             raise errors.ResourceNotFoundError(err.args)
         return destination
 
-    def post_to_url(self, url, path):
+    @staticmethod
+    def post_to_url(url, path):
         destination = os.path.join(url.path_part, os.path.basename(path))
         try:
             with FTPHost(url.host_name, url.user_name, url.user_password) as h:

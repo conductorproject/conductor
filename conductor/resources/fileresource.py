@@ -1,5 +1,10 @@
 """
 File resource classes for conductor
+
+.. note:
+
+   This module is deprecated
+
 """
 
 import os
