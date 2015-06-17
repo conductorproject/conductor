@@ -280,3 +280,22 @@ class Resource(object):
                 if os.path.isfile(i_path) and re.search(self.local_pattern, i):
                     result = i_path
         return result
+
+    def extract_path_parameters(self, path):
+        """
+        Extract an instance's parameters from an input path
+        """
+
+        sanitized =  re.sub(r"(\{0\.(?!parameters).*?\})", r".*?",
+                            self._local_pattern)
+        parameters = dict()
+        for k, v in self.parameters.iteritems():
+            re_pattern = re.sub(r"\{{0\.parameters\[{}\].*?\}}".format(k),
+                                r"(?P<{}>.*?)".format(k),
+                                sanitized)
+            try:
+                found_dict = re.search(re_pattern, path).groupdict()
+                parameters.update(found_dict)
+            except AttributeError:
+                pass  # this parameter is not used in the path
+        return parameters

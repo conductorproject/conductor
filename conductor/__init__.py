@@ -22,7 +22,20 @@ class TimeslotStrategy(enum.Enum):
     SINGLE = 1
     MULTIPLE = 2
 
+
 class TaskResourceRole(enum.Enum):
 
     INPUT = 1
     OUTPUT = 2
+
+
+class TemporalSelectionRule(enum.Enum):
+
+    LATEST = 1
+    EARLIEST = 2
+
+
+class ParameterSelectionRule(enum.Enum):
+
+    HIGHEST = 1
+    LOWEST = 2

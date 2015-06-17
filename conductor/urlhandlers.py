@@ -7,11 +7,14 @@ import os.path
 import re
 import shutil
 import logging
+import dateutil.parser
 
 from ftputil import FTPHost
 import ftputil.error
 
 from . import ConductorScheme
+from . import TemporalSelectionRule
+from . import ParameterSelectionRule
 from . import errors
 
 logger = logging.getLogger(__file__)
@@ -45,6 +48,53 @@ class BaseUrlHandler(object):
 
     def __repr__(self):
         return "{0}.{1.__class__.__name__}()".format(__name__, self)
+
+    def _timeslot_is_valid(self, timeslot, respect_timeslot,
+                           reference_timeslot):
+        valid = True
+        for part in respect_timeslot:
+            if not self._respects_temporal_part(timeslot, part,
+                                                reference_timeslot):
+                valid = False
+        return valid
+
+    def _respects_temporal_part(self, timeslot, part_name, reference):
+        reference_part = getattr(reference, part_name)
+        testing_part = getattr(timeslot, part_name)
+        result = False
+        if testing_part == reference_part:
+            result = True
+        return result
+
+    @staticmethod
+    def _validate_respect_timeslot_inputs(params):
+        for p in params:
+            if p not in ["year", "month", "day", "hour", "minute", "all"]:
+                raise ValueError("Invalid respect_timeslot "
+                                 "parameter: {}".format(p))
+
+    @staticmethod
+    def _validate_parameter_input(resource, name, rule):
+        if name is not None:
+            if name not in resource.parameters.keys():
+                raise ValueError("Invalid parameter name: {}".format(name))
+            if rule not in ParameterSelectionRule:
+                raise ValueError("Invalid selection rule: {}".format(rule))
+
+    @staticmethod
+    def _extract_path_timeslot(path):
+        dirname, basename = os.path.split(path)
+        timeslot_file_patterns = [
+            r"\d{12}"  # year, month, day, hour, minute
+        ]
+        timeslot = None
+        for patt in timeslot_file_patterns:
+            try:
+                ts_string = re.search(patt, basename).group()
+                timeslot = dateutil.parser.parse(ts_string)
+            except (AttributeError, ValueError):
+                pass
+        return timeslot
 
 
 class FileUrlHandler(BaseUrlHandler):
@@ -170,6 +220,48 @@ class FileUrlHandler(BaseUrlHandler):
             current_path = (current_path if current_path not in
                                             except_paths else None)
         return current_path
+
+    def find_path(self, resource, paths, respect_timeslot=None,
+                  temporal_rule=TemporalSelectionRule.LATEST,
+                  parameter_name=None,
+                  parameter_rule=ParameterSelectionRule.HIGHEST):
+        """
+        Return the path that fits the selection rules.
+
+        :param resource:
+        :param paths:
+        :param respect_timeslot:
+        :param temporal_rule:
+        :param parameter_name:
+        :param parameter_rule:
+        :return:
+        """
+
+        respect_timeslot = respect_timeslot or []
+        if any(respect_timeslot) and respect_timeslot[0] == "all":
+            respect_timeslot = ["year", "month", "day", "hour", "minute"]
+        self._validate_respect_timeslot_inputs(respect_timeslot)
+        self._validate_parameter_input(resource, parameter_name,
+                                       parameter_rule)
+        candidates = []
+        for p in paths:
+            path_slot = self._extract_path_timeslot(p)
+            path_parameters = resource.extract_path_parameters(p)
+            valid_slot = self._timeslot_is_valid(path_slot, respect_timeslot,
+                                                 resource.timeslot)
+            if valid_slot:
+                candidates.append((p, path_parameters, path_slot))
+        temporal_sorted = sorted(candidates, key=lambda i: i[-1])
+        if temporal_rule == TemporalSelectionRule.LATEST:
+            temporal_sorted.sort(reverse=True)
+        result = temporal_sorted
+        if parameter_name is not None:
+            parameter_sorted = sorted(temporal_sorted,
+                                      key=lambda i: i[1][parameter_name])
+            if parameter_rule == ParameterSelectionRule.HIGHEST:
+                parameter_sorted.sort(reverse=True)
+            result = parameter_sorted
+        return result[0][0] if any(result) else None
 
 
 class FtpUrlHandler(BaseUrlHandler):
