@@ -10,13 +10,14 @@ import datetime
 import dateutil.parser
 
 from .. import ServerSchemeMethod
+from .. import TemporalSelectionRule
+from .. import ParameterSelectionRule
 from .. import errors
 from ..servers import server_factory
 from ..collections import collection_factory
 from ..settings import settings
 from ..urlhandlers import url_handler_factory
-from .resourcelocations import ResourceLocation
-from .finders import resource_finder_factory
+from . import resourcelocations
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,27 @@ class ResourceFactory(object):
                 relative_paths = loc["relative_paths"]
                 authorization = loc.get("authorization")
                 media_type = loc.get("media_type")
-                scheme_parameters = loc.get("scheme_parameters", {})
-                rl = ResourceLocation(relative_paths, media_type,
-                                      server=server, scheme=scheme,
-                                      authorization=authorization,
-                                      location_for=mover_method,
-                                      **scheme_parameters)
+                if mover_method == ServerSchemeMethod.FIND:
+                    temporal_rule = TemporalSelectionRule[
+                        loc.get("temporal_rule", "latest").upper()]
+                    lock_timeslot = loc.get("lock_timeslot", [])
+                    parameter_rule = ParameterSelectionRule[
+                        loc.get("parameter_rule", "highest").upper()]
+                    parameter = loc.get("parameter")
+                    rl = resourcelocations.ResourceLocationFind(
+                        relative_paths, media_type, server=server,
+                        scheme=scheme, authorization=authorization,
+                        temporal_rule=temporal_rule,
+                        lock_timeslot=lock_timeslot,
+                        parameter_rule=parameter_rule,
+                        parameter=parameter
+                    )
+                else:
+                    rl = resourcelocations.ResourceLocation(
+                        relative_paths, media_type, server=server,
+                        scheme=scheme, authorization=authorization,
+                        location_for=mover_method
+                    )
                 result.append(rl)
             except IndexError:
                 logger.warning("resource location uses undefined scheme: "
@@ -256,12 +272,44 @@ class Resource(object):
         return posted_to
 
     def find(self):
-        for rl in self._find_locations:
+        """
+        Find the information that is needed in order to GET this resource.
+
+        This method will look for the timeslot and parameters that this
+        resource needs in order to be retrievable. This method applies to
+        resources for which it is not possible to build the appropriate get
+        structures.
+
+        :return:
+        """
+
+        found_info = None
+        i = 0
+        while not found_info and i < len(self._find_locations):
+            rl = self._find_locations[i]
+            j = 0
             urls = rl.create_urls()
-            for u in urls:
-                handler = url_handler_factory.get_handler(u.scheme)
-                logger.debug("Trying to find in: {}".format(u.url))
-                path = handler.find_in_url(u)
+            while not found_info and j < len(urls):
+                url = urls[j]
+                url.parent = None  # to access the format marks on the urls
+                handler = url_handler_factory.get_handler(url.scheme)
+                logger.debug("Trying to find in: {}".format(url.url))
+                found_info = handler.find_resource_info(
+                    url, self,
+                    lock_timeslot=rl.lock_timeslot,
+                    parameter=rl.parameter,
+                    temporal_rule=rl.temporal_rule,
+                    parameter_rule=rl.parameter_rule
+                )
+                j += 1
+            i += 1
+        result = False
+        if found_info:
+            slot, params = found_info
+            self.timeslot = slot
+            self.parameters.update(params)
+            result = True
+        return result
 
     def find_local(self, path):
         """

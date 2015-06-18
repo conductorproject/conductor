@@ -90,6 +90,34 @@
       ]
     },
     {
+      "name": "another test",
+      "local_pattern": "file_{0.parameters[param_a]}_{0.timeslot_string}.txt",
+      "urn": "test:{0.local_pattern}",
+      "parameters": [
+        {
+          "name": "param_a",
+          "value": 0
+        }
+      ],
+      "get_locations": [],
+      "find_locations": [
+        {
+          "server": "portatil",
+          "scheme": "file",
+          "relative_paths": [
+            "outputs/lrit2hdf5/{0.parameters[param_a]}/{0.timeslot.year}/{0.timeslot.month:02d}/{0.timeslot.day:02d}/{0.timeslot.hour:02d}"
+          ],
+          "media_type": "text",
+          "temporal_rule": "latest",
+          "lock_timeslot": [
+            "month"
+          ],
+          "parameter_rule": "highest",
+          "parameter": "param_a"
+        }
+      ]
+    },
+    {
       "name": "goes landcover",
       "local_pattern": "HDF5_GEOLAND2_GOES13_LANDCOV_GOES-Disk_{0.timeslot_string}.h5",
       "urn": "copernicus_gl:ipma:internal_products:{0.local_pattern}",
@@ -172,6 +200,19 @@
     }
   ],
   "servers": [
+    {
+      "name": "portatil",
+      "domain": "ric-portatil",
+      "schemes": [
+        {
+          "method": "GET",
+          "scheme_name": "file",
+          "base_paths": [
+            "/home/ricardo/test_data/conductor_tests"
+          ]
+        }
+      ]
+    },
     {
       "name": "geo2",
       "domain": "geo2.meteo.pt",

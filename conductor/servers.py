@@ -9,7 +9,6 @@ from . import ConductorScheme
 from . import ServerSchemeMethod
 from . import errors
 from .settings import settings
-from .urlhandlers import url_handler_factory
 
 logger = logging.getLogger(__name__)
 

@@ -113,6 +113,11 @@ class Url(object):
     def from_string(cls, url):
         hash_part, dehashed = cls.extract_hash_part(url)
         query_params, dequeried = cls.extract_query_params(url)
+        first_colon = dequeried.find(":")
+        first_slash = dequeried.find("/")
+        if first_colon > first_slash:
+            # this is probably a file path that has special formatting
+            dequeried = "file://{}".format(dequeried)
         scheme_name, sep, scheme_specific = dequeried.partition(":")
         if scheme_specific == "":
             scheme_specific = scheme_name

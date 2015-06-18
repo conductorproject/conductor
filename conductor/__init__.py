@@ -39,3 +39,14 @@ class ParameterSelectionRule(enum.Enum):
 
     HIGHEST = 1
     LOWEST = 2
+
+
+class TemporalPart(enum.Enum):
+    YEAR = 1
+    MONTH = 2
+    DAY = 3
+    HOUR = 4
+    MINUTE = 5
+    SECOND = 6
+    YEAR_DAY = 7
+    DEKADE = 8

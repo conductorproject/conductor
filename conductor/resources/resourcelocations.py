@@ -6,6 +6,8 @@ import logging
 
 from .. import ConductorScheme
 from .. import ServerSchemeMethod
+from .. import TemporalSelectionRule
+from .. import ParameterSelectionRule
 from .. import errors
 from ..servers import server_factory
 from ..urlparser import Url
@@ -20,11 +22,10 @@ class ResourceLocation(object):
     relative_paths = []
     authorization = u""
     media_type = u""
-    scheme_parameters = dict()
 
     def __init__(self, relative_paths, media_type, server=None, scheme=None,
                  authorization=u"", location_for=ServerSchemeMethod.GET,
-                 parent=None, **scheme_parameters):
+                 parent=None):
         self.parent = parent
         server = server or server_factory.get_server()
         scheme = scheme or ConductorScheme.FILE
@@ -43,7 +44,6 @@ class ResourceLocation(object):
             self.relative_paths = relative_paths
             self.authorization = authorization
             self.media_type = media_type
-            self.scheme_parameters = scheme_parameters
         else:
             raise errors.InvalidSchemeError(
                 "Unsupported scheme {} for server {}".format(scheme, server))
@@ -52,13 +52,12 @@ class ResourceLocation(object):
         return ("{0}.{1.__class__.__name__}({1.relative_paths}, "
                 "{1.media_type}, server={1.server}, "
                 "scheme_configuration={1.scheme_configuration}), "
-                "authorization={1.authorization}, parent={1.parent}, "
-                "scheme_parameters={1.scheme_parameters}".format(__name__,
-                                                                 self))
+                "authorization={1.authorization}, "
+                "parent={1.parent})".format(__name__, self))
 
     def __str__(self):
-        return ("{0.__class__.__name__}({0.relative_paths}, {0.scheme}, "
-                "{0.scheme_parameters})".format(self))
+        return ("{0.__class__.__name__}({0.relative_paths}, "
+                "{0.scheme})".format(self))
 
     def create_urls(self):
         url_params = []
@@ -82,3 +81,26 @@ class ResourceLocation(object):
                       parent=self.parent, **query_params)
             result.append(url)
         return result
+
+
+class ResourceLocationFind(ResourceLocation):
+
+    temporal_rule = None
+    lock_timeslot = []
+    parameter_rule = None
+    parameter = None
+
+    def __init__(self, relative_paths, media_type, server=None, scheme=None,
+                 authorization=u"", parent=None,
+                 temporal_rule=TemporalSelectionRule.LATEST,
+                 lock_timeslot=None, parameter=None,
+                 parameter_rule=ParameterSelectionRule.HIGHEST):
+        super(ResourceLocationFind, self).__init__(
+            relative_paths, media_type, server=server, scheme=scheme,
+            authorization=authorization, location_for=ServerSchemeMethod.FIND,
+            parent=parent
+        )
+        self.temporal_rule = temporal_rule
+        self.lock_timeslot = lock_timeslot or []
+        self.parameter = parameter
+        self.parameter_rule = parameter_rule

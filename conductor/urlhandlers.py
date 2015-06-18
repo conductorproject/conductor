@@ -4,6 +4,7 @@ Handlers that take care of GETting and POSTing resources to and from URLs
 
 import os
 import os.path
+import copy
 import re
 import shutil
 import logging
@@ -15,9 +16,11 @@ import ftputil.error
 from . import ConductorScheme
 from . import TemporalSelectionRule
 from . import ParameterSelectionRule
+from . import TemporalPart
 from . import errors
+from .resources.resourcelocations import ResourceLocation
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 class UrlHandlerFactory(object):
@@ -49,10 +52,10 @@ class BaseUrlHandler(object):
     def __repr__(self):
         return "{0}.{1.__class__.__name__}()".format(__name__, self)
 
-    def _timeslot_is_valid(self, timeslot, respect_timeslot,
+    def _timeslot_is_valid(self, timeslot, lock_timeslot,
                            reference_timeslot):
         valid = True
-        for part in respect_timeslot:
+        for part in lock_timeslot:
             if not self._respects_temporal_part(timeslot, part,
                                                 reference_timeslot):
                 valid = False
@@ -67,10 +70,11 @@ class BaseUrlHandler(object):
         return result
 
     @staticmethod
-    def _validate_respect_timeslot_inputs(params):
+    def _validate_lock_timeslot_inputs(params):
         for p in params:
-            if p not in ["year", "month", "day", "hour", "minute", "all"]:
-                raise ValueError("Invalid respect_timeslot "
+            if p not in [n.lower() for n, m in
+                         TemporalPart.__members__.items()]:
+                raise ValueError("Invalid lock_timeslot "
                                  "parameter: {}".format(p))
 
     @staticmethod
@@ -95,6 +99,31 @@ class BaseUrlHandler(object):
             except (AttributeError, ValueError):
                 pass
         return timeslot
+
+    @staticmethod
+    def extract_parameter_spec(fragment):
+        pattern = r"\{0\.parameters\[(.*?)\]\}"
+        re_obj = re.search(pattern, fragment)
+        return re_obj.group(1) if re_obj is not None else None
+
+    @staticmethod
+    def extract_temporal_spec(fragment):
+        spec = None
+        re_pattern = None
+        format_string = ""
+        for n, member in TemporalPart.__members__.items():
+            name = n.lower()
+            pattern = r"\{{0\.timeslot\.{}:?(.*?)\}}".format(name)
+            re_obj = re.search(pattern, fragment)
+            if re_obj is not None:
+                spec = name
+                format_string = re_obj.group(1)
+                try:
+                    re_pattern = r"\{}{{{}}}".format(format_string[-1],
+                                                     len(format_string[:-1]))
+                except IndexError:
+                    pass
+        return spec, format_string, re_pattern
 
 
 class FileUrlHandler(BaseUrlHandler):
@@ -159,109 +188,129 @@ class FileUrlHandler(BaseUrlHandler):
                 raise
         return destination
 
+    def find_resource_info(self, url, reference_resource,
+                           lock_timeslot=None, parameter=None,
+                           temporal_rule=TemporalSelectionRule.LATEST,
+                           parameter_rule=ParameterSelectionRule.HIGHEST):
+        dynamic_path = url.path_part
+        resource_info = None
+        found = None
+        max_num_dirs = 20  # how many directories to scan before bailing
+        i = 0
+        exclude_dirs = []
+        while found is None and i < max_num_dirs:
+            try:
+                directory = self.find_directory(
+                    dynamic_path, resource=reference_resource,
+                    exclude=exclude_dirs, lock_timeslot=lock_timeslot,
+                    parameter=parameter, parameter_rule=parameter_rule,
+                    temporal_rule=temporal_rule
+                )
+                logger.debug("directory: {}".format(directory))
+                found = self.find_info(
+                    reference_resource, directory,
+                    lock_timeslot=lock_timeslot, temporal_rule=temporal_rule,
+                    parameter=parameter, parameter_rule=parameter_rule
+                )
+                if found is None:
+                    exclude_dirs.append(directory)
+                    i += 1
+            except OSError as err:
+                logger.error(err)
+                break
+        if found is not None:
+            path, params, slot = found
+            resource_info = slot, params
+        return resource_info
+
     @staticmethod
-    def select_path(full_path_pattern, selection_method="latest",
-                    except_paths=None):
-        """
-        Return the full path to an existing directory that meets search criteria
-
-        This function accepts a pattern that is interpreted as being the
-        specification for finding a real path on the filesystem.
-
-        >>> server_base_path = "/home/geo2/test_data/giosystem/data"
-        >>> relative_path = "OUTPUT_DATA/PRE_PROCESS/LRIT2HDF5_g2/DYNAMIC_OUTPUT/v2.4"
-        >>> dynamic_part = "(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})"
-        >>> path = os.path.join(server_base_path, relative_path, dynamic_part)
-        >>> select_path(path, selection_method="latest")
-
-        :param full_path_pattern:
-        :param selection_method:
-        :param except_paths:
-        :return:
-        """
-        except_paths = except_paths if except_paths is not None else []
-        base = full_path_pattern[:full_path_pattern.find("(")]
-        dynamic = full_path_pattern[full_path_pattern.find("("):]
-        dynamic_parts = dynamic.split("/")
-        current_path = base
-        if len(dynamic_parts) > 1:
-            next_hierarchic_part = 0
-            while 0 <= next_hierarchic_part < len(dynamic_parts):
-                hierarchic_part = dynamic_parts[next_hierarchic_part]
-                old_path = current_path
-                candidates = []
-                try:
-                    for c in os.listdir(current_path):
-                        if os.path.isdir(os.path.join(current_path, c)):
-                            re_obj = re.search(hierarchic_part, c)
-                            if re_obj is not None:
-                                candidates.append(c)
-                except OSError:
-                    pass
-                sorted_candidates = sorted(candidates)
-                if selection_method == "latest":
-                    sorted_candidates.reverse()
-                candidate_index = 0
-                found = False
-                while candidate_index < len(sorted_candidates) and not found:
-                    current_path = os.path.join(
-                        old_path, sorted_candidates[candidate_index])
-                    found = True if current_path not in except_paths else False
-                    candidate_index += 1
-                if found:
-                    next_hierarchic_part += 1
+    def find_directory(relative_path, resource=None, lock_timeslot=None,
+                       exclude=None, parameter=None,
+                       parameter_rule=ParameterSelectionRule.HIGHEST,
+                       temporal_rule=TemporalSelectionRule.LATEST):
+        lock_timeslot = lock_timeslot or []
+        exclude = exclude or []
+        parts = relative_path.split("/")
+        path = parts[0]
+        i = 1
+        while i < len(parts):
+            next_part = parts[i]
+            next_param_part = BaseUrlHandler.extract_parameter_spec(next_part)
+            next_temporal_part, format_string, re_pattern = (
+                BaseUrlHandler.extract_temporal_spec(next_part))
+            if not (next_param_part or next_temporal_part):
+                next_level = next_part  # lets go one level deeper
+            elif next_temporal_part and next_temporal_part in lock_timeslot:
+                the_string = "{{:{}}}".format(format_string)
+                next_level = the_string.format(
+                    getattr(resource.timeslot, next_temporal_part))
+            else:
+                next_parts = os.listdir(path)
+                if next_temporal_part:
+                    patt = re_pattern or r".*?"
+                    # lets choose next part according to the temporal rule
+                    candidates = [n for n in next_parts if re.search(patt, n)]
+                    candidates.sort(reverse=(
+                        temporal_rule == TemporalSelectionRule.LATEST))
+                    next_level = candidates[0]
+                elif next_param_part and next_param_part == parameter:
+                    # lets choose next part according to the param rule
+                    candidates = next_parts[:]
+                    candidates.sort(reverse=(
+                        parameter_rule == ParameterSelectionRule.HIGHEST))
+                    next_level = candidates[0]
                 else:
-                    # cycle back to the previous hierarchic level
-                    next_hierarchic_part -= 1
-                    cycle_back_path = os.path.dirname(current_path)
-                    except_paths.append(cycle_back_path)
-                    current_path = os.path.dirname(cycle_back_path)
-        else:
-            current_path = (current_path if current_path not in
-                                            except_paths else None)
-        return current_path
+                    logger.warning("Found parameter {!r} in path and "
+                                   "it is not being used for "
+                                   "finding... Selecting the first available "
+                                   "sub path".format(next_param_part))
+                    next_level = next_parts[0]
+            path = "/".join((path, next_level))
+            i += 1
+        return path
 
-    def find_path(self, resource, paths, respect_timeslot=None,
+    def find_info(self, resource, directory, lock_timeslot=None,
                   temporal_rule=TemporalSelectionRule.LATEST,
-                  parameter_name=None,
+                  parameter=None,
                   parameter_rule=ParameterSelectionRule.HIGHEST):
         """
-        Return the path that fits the selection rules.
+        Return the resource info that fits the selection rules.
 
         :param resource:
-        :param paths:
-        :param respect_timeslot:
+        :param directory:
+        :param lock_timeslot:
         :param temporal_rule:
-        :param parameter_name:
+        :param parameter:
         :param parameter_rule:
         :return:
         """
 
-        respect_timeslot = respect_timeslot or []
-        if any(respect_timeslot) and respect_timeslot[0] == "all":
-            respect_timeslot = ["year", "month", "day", "hour", "minute"]
-        self._validate_respect_timeslot_inputs(respect_timeslot)
-        self._validate_parameter_input(resource, parameter_name,
-                                       parameter_rule)
+        lock_timeslot = lock_timeslot or []
+        if any(lock_timeslot) and lock_timeslot[0] == "all":
+            lock_timeslot = [n.lower() for n, m in
+                             TemporalPart.__members__.items()]
+        self._validate_lock_timeslot_inputs(lock_timeslot)
+        self._validate_parameter_input(resource, parameter, parameter_rule)
         candidates = []
-        for p in paths:
+        for p in os.listdir(directory):
             path_slot = self._extract_path_timeslot(p)
             path_parameters = resource.extract_path_parameters(p)
-            valid_slot = self._timeslot_is_valid(path_slot, respect_timeslot,
+            valid_slot = self._timeslot_is_valid(path_slot, lock_timeslot,
                                                  resource.timeslot)
             if valid_slot:
                 candidates.append((p, path_parameters, path_slot))
-        temporal_sorted = sorted(candidates, key=lambda i: i[-1])
-        if temporal_rule == TemporalSelectionRule.LATEST:
-            temporal_sorted.sort(reverse=True)
+        temporal_sorted = sorted(
+            candidates, key=lambda i: i[-1],
+            reverse=(temporal_rule == TemporalSelectionRule.LATEST)
+        )
         result = temporal_sorted
-        if parameter_name is not None:
-            parameter_sorted = sorted(temporal_sorted,
-                                      key=lambda i: i[1][parameter_name])
-            if parameter_rule == ParameterSelectionRule.HIGHEST:
-                parameter_sorted.sort(reverse=True)
+        if parameter is not None:
+            parameter_sorted = sorted(
+                temporal_sorted, key=lambda i: i[1][parameter],
+                reverse=(parameter_rule == ParameterSelectionRule.HIGHEST)
+            )
             result = parameter_sorted
-        return result[0][0] if any(result) else None
+        return result[0] if any(result) else None
 
 
 class FtpUrlHandler(BaseUrlHandler):
