@@ -59,6 +59,28 @@
   ],
   "resources": [
     {
+      "name": "goes o3",
+      "local_pattern": "HDF5_MF_GOES12_O3_GOES-Disk_{0.timeslot_string}.h5",
+      "urn": "copernicus_gl:ipma:internal_products:{0.local_pattern}",
+      "parameters": {},
+      "get_locations": [],
+      "find_locations": [
+        {
+          "server": "geo2",
+          "scheme": "file",
+          "relative_paths": [
+            "STATIC_INPUTS/{0._local_pattern}"
+          ],
+          "media_type": "HDF5-Copernicus",
+          "temporal_rule": "latest",
+          "lock_timeslot": [
+            "month"
+          ]
+        }
+      ],
+      "post_locations": []
+    },
+    {
       "name": "ecmwf fields",
       "local_pattern": "GRIB_F-{0.parameters[ecmwf_run]:03d}_ECMWF_All_Globe_{0.timeslot_string}",
       "urn": "copernicus_gl:ipma:internal_products:{0.local_pattern}",

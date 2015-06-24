@@ -275,6 +275,8 @@ class Resource(object):
         """
         Find the information that is needed in order to GET this resource.
 
+        This method will update a resource's timeslot and parameters in place.
+
         This method will look for the timeslot and parameters that this
         resource needs in order to be retrievable. This method applies to
         resources for which it is not possible to build the appropriate get

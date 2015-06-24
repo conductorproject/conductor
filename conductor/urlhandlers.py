@@ -123,15 +123,43 @@ class BaseUrlHandler(object):
                                                      len(format_string[:-1]))
                 except IndexError:
                     pass
+        if spec is None:
+            # lets check for the timeslot_string
+            pattern = r"timeslot_string"
+            re_obj = re.search(pattern, fragment)
+            if re_obj is not None:
+                spec = "timeslot_string"
+                re_pattern = r"\d{12}"
         return spec, format_string, re_pattern
+
+    @staticmethod
+    def replace_temporal_specs_with_regex(fragment):
+        """
+        Replace temporal pattern placeholders with regular expressions
+
+        This method will scan a string and replace all occurrences of special
+        timeslot strings with their correspondent regular expression patterns.
+        It is useful to transform a conductor pattern string into a normal
+        regular expression
+
+        :param fragment:
+        :return:
+        """
+
+        f = fragment
+        temporal_fragments = list(TemporalPart) + ["timeslot_string"]
+        for t in temporal_fragments:
+            spec, format_string, re_pattern = \
+                BaseUrlHandler.extract_temporal_spec(f)
+            if spec is not None:
+                re_pattern = re_pattern if re_pattern not in ("", None) \
+                    else ".*?"
+                f = re.sub(r"{{0\.(timeslot\.)?{}(.*?)?}}".format(spec),
+                           re_pattern, f)
+        return f
 
 
 class FileUrlHandler(BaseUrlHandler):
-
-    def find_in_url(self, url, selection_method="latest"):
-        found = self.select_path(url.path_part,
-                                 selection_method=selection_method)
-        return found
 
     def get_from_url(self, url, destination_directory):
         """
@@ -193,6 +221,9 @@ class FileUrlHandler(BaseUrlHandler):
                            temporal_rule=TemporalSelectionRule.LATEST,
                            parameter_rule=ParameterSelectionRule.HIGHEST):
         dynamic_path = url.path_part
+        directory_pattern, sep, name_pattern = dynamic_path.rpartition("/")
+        name_pattern = name_pattern if name_pattern != "" else ".*"
+
         resource_info = None
         found = None
         max_num_dirs = 20  # how many directories to scan before bailing
@@ -201,14 +232,14 @@ class FileUrlHandler(BaseUrlHandler):
         while found is None and i < max_num_dirs:
             try:
                 directory = self.find_directory(
-                    dynamic_path, resource=reference_resource,
+                    directory_pattern, resource=reference_resource,
                     exclude=exclude_dirs, lock_timeslot=lock_timeslot,
                     parameter=parameter, parameter_rule=parameter_rule,
                     temporal_rule=temporal_rule
                 )
-                logger.debug("directory: {}".format(directory))
                 found = self.find_info(
                     reference_resource, directory,
+                    name_pattern=name_pattern,
                     lock_timeslot=lock_timeslot, temporal_rule=temporal_rule,
                     parameter=parameter, parameter_rule=parameter_rule
                 )
@@ -269,7 +300,8 @@ class FileUrlHandler(BaseUrlHandler):
             i += 1
         return path
 
-    def find_info(self, resource, directory, lock_timeslot=None,
+    def find_info(self, resource, directory, name_pattern=r".*",
+                  lock_timeslot=None,
                   temporal_rule=TemporalSelectionRule.LATEST,
                   parameter=None,
                   parameter_rule=ParameterSelectionRule.HIGHEST):
@@ -285,28 +317,38 @@ class FileUrlHandler(BaseUrlHandler):
         :return:
         """
 
+        pattern = BaseUrlHandler.replace_temporal_specs_with_regex(
+            name_pattern.format(resource))
         lock_timeslot = lock_timeslot or []
         if any(lock_timeslot) and lock_timeslot[0] == "all":
             lock_timeslot = [n.lower() for n, m in
                              TemporalPart.__members__.items()]
         self._validate_lock_timeslot_inputs(lock_timeslot)
         self._validate_parameter_input(resource, parameter, parameter_rule)
-        candidates = []
+        candidates_with_timeslot = []
+        candidates_without_timeslot = []
         for p in os.listdir(directory):
-            path_slot = self._extract_path_timeslot(p)
-            path_parameters = resource.extract_path_parameters(p)
-            valid_slot = self._timeslot_is_valid(path_slot, lock_timeslot,
-                                                 resource.timeslot)
-            if valid_slot:
-                candidates.append((p, path_parameters, path_slot))
+            if re.search(pattern, p) is not None:
+                path_slot = self._extract_path_timeslot(p)
+                path_parameters = resource.extract_path_parameters(p)
+                if path_slot is not None:
+                    valid_slot = self._timeslot_is_valid(
+                        path_slot, lock_timeslot, resource.timeslot)
+                    if valid_slot:
+                        candidates_with_timeslot.append(
+                            (p, path_parameters, path_slot))
+                else:
+                    candidates_without_timeslot.append(
+                        (p, path_parameters, None))
         temporal_sorted = sorted(
-            candidates, key=lambda i: i[-1],
+            candidates_with_timeslot, key=lambda i: i[-1],
             reverse=(temporal_rule == TemporalSelectionRule.LATEST)
         )
         result = temporal_sorted
         if parameter is not None:
+            all_candidates = temporal_sorted + candidates_without_timeslot
             parameter_sorted = sorted(
-                temporal_sorted, key=lambda i: i[1][parameter],
+                all_candidates, key=lambda i: i[1][parameter],
                 reverse=(parameter_rule == ParameterSelectionRule.HIGHEST)
             )
             result = parameter_sorted
