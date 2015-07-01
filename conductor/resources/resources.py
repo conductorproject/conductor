@@ -208,6 +208,20 @@ class Resource(object):
         return self.urn
 
     def add_location(self, resource_location, location_type):
+        """
+        Add a new location related to the resource.
+
+        A location can be of one of three types:
+
+        * get_location - Represents a location where it is possible to GET
+            a representation of the resource
+        * post_location
+        * find_location
+
+        :param resource_location:
+        :param location_type:
+        :return:
+        """
         group = {
             ServerSchemeMethod.GET: self._get_locations,
             ServerSchemeMethod.POST: self._post_locations,
@@ -219,16 +233,18 @@ class Resource(object):
         """
         Get a resource's representation.
 
-        This method iterates through all of the available resource_locations
-        for a resource and tries to fetch the resource's representation using
+        This method iterates through all of the available get_locations
+        for the resource and tries to fetch the its representation using
         the URLs defined in each resource_location. It stops at the first
-        successful URL retrieval.
+        successful URL retrieval. Locations that specify the file scheme
+        are tried first.
         """
 
         representation = None
         i = 0
-        while i < len(self._get_locations) and representation is None:
-            rl = self._get_locations[i]
+        ordered_locations = self.get_ordered_locations(self._get_locations)
+        while i < len(ordered_locations) and representation is None:
+            rl = ordered_locations[i]
             urls = rl.create_urls()
             j = 0
             while j < len(urls) and representation is None:
@@ -251,15 +267,17 @@ class Resource(object):
 
         This method sends the input representation to the servers defined in
         the instance's
+
         :param representation:
         :param post_to:
         :type post_to: [ResourceLocation]
         :return:
         """
 
-        post_to = post_to if post_to else self._post_locations
+        locations = post_to or self._post_locations
+        ordered_locations = self.get_ordered_locations(locations)
         posted_to = []
-        for rl in post_to:
+        for rl in ordered_locations:
             urls = rl.create_urls()
             for u in urls:
                 handler = url_handler_factory.get_handler(u.scheme)
@@ -271,6 +289,8 @@ class Resource(object):
                     logger.error("Could not post to {}".format(u.url))
         return posted_to
 
+    # TODO - Check whether we should reassign the parent to the urls after
+    #        finding stuff
     def find(self):
         """
         Find the information that is needed in order to GET this resource.
@@ -278,17 +298,18 @@ class Resource(object):
         This method will update a resource's timeslot and parameters in place.
 
         This method will look for the timeslot and parameters that this
-        resource needs in order to be retrievable. This method applies to
+        resource needs in order to be retrievable. It applies to
         resources for which it is not possible to build the appropriate get
-        structures.
+        structures without first finding them.
 
         :return:
         """
 
         found_info = None
         i = 0
-        while not found_info and i < len(self._find_locations):
-            rl = self._find_locations[i]
+        ordered_locations = self.get_ordered_locations(self._find_locations)
+        while not found_info and i < len(ordered_locations):
+            rl = ordered_locations[i]
             j = 0
             urls = rl.create_urls()
             while not found_info and j < len(urls):
@@ -308,7 +329,7 @@ class Resource(object):
         result = False
         if found_info:
             slot, params = found_info
-            self.timeslot = slot
+            self.timeslot = slot  # what if we could not find a slot?
             self.parameters.update(params)
             result = True
         return result
@@ -317,7 +338,8 @@ class Resource(object):
         """
         Find the file that matches this resource in the local filesystem.
 
-        :param path:
+        :param path: it can be either the path to a file to check or to a
+            directory to search (does not recurse into subdirectories)
         :return:
         """
 
@@ -349,3 +371,22 @@ class Resource(object):
             except AttributeError:
                 pass  # this parameter is not used in the path
         return parameters
+
+    @classmethod
+    def get_ordered_locations(resource_locations):
+        """
+        Return an ordered copy of the input list of resource locations.
+
+        The resource_locations are sorted by their scheme according to the
+        values of the `conductor.ConductorScheme` enumerator
+
+        :param resource_locations:
+        :return:
+        """
+
+        ordered_locations = sorted(
+            resource_locations,
+            key=lambda rl: rl.scheme_configuration.scheme.value
+        )
+        return ordered_locations
+

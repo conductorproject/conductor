@@ -5,6 +5,13 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
 class ConductorScheme(enum.Enum):
+    """
+    Schemes for building urls. The value of each scheme is used for
+    prioritizing GET/POST/... operations, so the FILE scheme should be the
+    first one (meaning that since the local filesystem is cheaper to use,
+    it makes sense to try it before the others)
+    """
+
     FILE = 1
     FTP = 2
     SFTP = 3
