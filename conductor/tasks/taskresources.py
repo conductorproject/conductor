@@ -5,7 +5,7 @@ Classes for managing conductor.task resources
 import copy
 import logging
 
-from .. import timeslotdisplacement as tsd
+from . import timeslotdisplacement as tsd
 
 logger = logging.getLogger(__name__)
 
