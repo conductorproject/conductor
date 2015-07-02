@@ -1,5 +1,7 @@
 """
 Resource finder classes for conductor
+
+This module is deprecated
 """
 
 import os

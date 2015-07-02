@@ -1,5 +1,8 @@
 """
 Mover classes for conductor
+
+this module is deprecated
+
 """
 
 import os

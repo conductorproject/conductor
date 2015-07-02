@@ -2,3 +2,5 @@
 *.png
 *.un~
 *.pyc
+
+*.egg-info/*

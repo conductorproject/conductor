@@ -242,7 +242,7 @@ class Resource(object):
 
         representation = None
         i = 0
-        ordered_locations = self.get_ordered_locations(self._get_locations)
+        ordered_locations = self.sort_locations(self._get_locations)
         while i < len(ordered_locations) and representation is None:
             rl = ordered_locations[i]
             urls = rl.create_urls()
@@ -275,7 +275,7 @@ class Resource(object):
         """
 
         locations = post_to or self._post_locations
-        ordered_locations = self.get_ordered_locations(locations)
+        ordered_locations = self.sort_locations(locations)
         posted_to = []
         for rl in ordered_locations:
             urls = rl.create_urls()
@@ -307,7 +307,7 @@ class Resource(object):
 
         found_info = None
         i = 0
-        ordered_locations = self.get_ordered_locations(self._find_locations)
+        ordered_locations = self.sort_locations(self._find_locations)
         while not found_info and i < len(ordered_locations):
             rl = ordered_locations[i]
             j = 0
@@ -372,8 +372,8 @@ class Resource(object):
                 pass  # this parameter is not used in the path
         return parameters
 
-    @classmethod
-    def get_ordered_locations(resource_locations):
+    @staticmethod
+    def sort_locations(resource_locations):
         """
         Return an ordered copy of the input list of resource locations.
 

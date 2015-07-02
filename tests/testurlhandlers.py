@@ -8,6 +8,9 @@ from nose.tools import eq_, assert_is_instance, assert_false
 import mock
 
 import conductor.urlhandlers
+from conductor.urlhandlers.base import BaseUrlHandler
+from conductor.urlhandlers.filehandlers import FileUrlHandler
+from conductor.urlhandlers.ftphandlers import (FtpUrlHandler, SftpUrlHandler)
 from conductor import ConductorScheme
 import conductor.urlparser
 
@@ -25,7 +28,7 @@ class TestUrlHandlerFactory(object):
 
         for name, scheme in ConductorScheme.__members__.items():
             h = self.factory.get_handler(scheme)
-            assert_is_instance(h, conductor.urlhandlers.BaseUrlHandler)
+            assert_is_instance(h, BaseUrlHandler)
 
 
 class TestBaseUrlHandler(object):
@@ -34,20 +37,20 @@ class TestBaseUrlHandler(object):
     def setup_class(cls):
         cls.bogus_directory_path = "/home/fake_user/some_directory"
 
-    @mock.patch("conductor.urlhandlers.os.path")
-    @mock.patch("conductor.urlhandlers.os")
+    @mock.patch("conductor.urlhandlers.base.os.path")
+    @mock.patch("conductor.urlhandlers.base.os")
     def test_create_local_directory(self, mock_os, mock_path):
         """Local directories are correctly created."""
 
         # test that if the directory exists we do not try to create it
         mock_path.isdir.return_value = True
-        conductor.urlhandlers.BaseUrlHandler.create_local_directory(
+        BaseUrlHandler.create_local_directory(
             self.bogus_directory_path)
         mock_path.isdir.assert_called_with(self.bogus_directory_path)
         assert_false(mock_os.makedirs.called)
         # now test that if the directory does not exist we try to create it
         mock_path.isdir.return_value = False
-        conductor.urlhandlers.BaseUrlHandler.create_local_directory(
+        BaseUrlHandler.create_local_directory(
             self.bogus_directory_path)
         mock_os.makedirs.assert_called_with(self.bogus_directory_path)
 
@@ -62,9 +65,9 @@ class TestFileUrlHandler(object):
             "file:///fake/path")
         cls.bogus_get_destination_directory = "/home/fake/destination"
 
-    @mock.patch.object(conductor.urlhandlers.FileUrlHandler,
+    @mock.patch.object(conductor.urlhandlers.filehandlers.FileUrlHandler,
                        "create_local_directory")
-    @mock.patch("conductor.urlhandlers.shutil")
+    @mock.patch("conductor.urlhandlers.filehandlers.shutil")
     def test_get_from_url(self, mock_shutil, mock_create_local_dir):
         """URLs are correctly GET from the local filesystem."""
 
@@ -76,9 +79,9 @@ class TestFileUrlHandler(object):
         mock_shutil.copyfile.assert_called_with(self.bogus_url.path_part,
                                                 result)
 
-    @mock.patch("conductor.urlhandlers.os.path")
-    @mock.patch("conductor.urlhandlers.os")
-    @mock.patch("conductor.urlhandlers.shutil")
+    @mock.patch("conductor.urlhandlers.filehandlers.os.path")
+    @mock.patch("conductor.urlhandlers.filehandlers.os")
+    @mock.patch("conductor.urlhandlers.filehandlers.shutil")
     def test_post_to_url(self, mock_shutil, mock_os, mock_os_path):
         """Files are correctly POSTed to the local filesystem."""
 
@@ -102,9 +105,9 @@ class TestFtpUrlHandler(object):
             "ftp://some_user:some_pass@fake_host/dir/subdir/fake_file")
         cls.bogus_get_destination_directory = "/home/fake/destination"
 
-    @mock.patch.object(conductor.urlhandlers.FtpUrlHandler,
+    @mock.patch.object(conductor.urlhandlers.ftphandlers.FtpUrlHandler,
                        "create_local_directory")
-    @mock.patch("conductor.urlhandlers.FTPHost", autospec=True)
+    @mock.patch("conductor.urlhandlers.ftphandlers.FTPHost", autospec=True)
     def test_get_from_url(self, mock_ftp_host_constructor,
                           mock_create_local_dir):
         """URLs are correctly GET from an FTP server."""
@@ -123,7 +126,7 @@ class TestFtpUrlHandler(object):
         mock_ftp_host.download.assert_called_with(
             self.bogus_url.path_part, result)
 
-    @mock.patch("conductor.urlhandlers.FTPHost", autospec=True)
+    @mock.patch("conductor.urlhandlers.ftphandlers.FTPHost", autospec=True)
     def test_post_to_url(self, mock_ftp_host_constructor):
         """Files are correctly POSTed to an FTP server."""
         mock_ftp_host = \
